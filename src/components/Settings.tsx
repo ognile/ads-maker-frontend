@@ -6,7 +6,7 @@ interface SettingsData {
   image_generation_enabled: boolean
 }
 
-const API_BASE = '/api'
+import { API_BASE } from '../config'
 
 export function Settings() {
   const [settings, setSettings] = useState<SettingsData | null>(null)

@@ -4,7 +4,7 @@ import { Check, LogOut, Key } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from './ui/toast'
 
-const API_BASE = '/api'
+import { API_BASE } from '../config'
 
 interface FBUser {
   id: string

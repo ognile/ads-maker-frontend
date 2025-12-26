@@ -88,7 +88,7 @@ export interface Product {
   updated_at: string
 }
 
-const API_BASE = '/api'
+import { API_BASE } from './config'
 
 async function fetchDataSources(): Promise<DataSource[]> {
   const res = await fetch(`${API_BASE}/data-sources`)

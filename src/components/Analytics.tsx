@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { RefreshCw, Loader2, TrendingUp, TrendingDown, Bot, User } from 'lucide-react'
 import { Button } from './ui/button'
 
-const API_BASE = '/api'
+import { API_BASE } from '../config'
 const CACHE_KEY = 'analytics_cache'
 const CACHE_TTL = 15 * 60 * 1000 // 15 minutes
 

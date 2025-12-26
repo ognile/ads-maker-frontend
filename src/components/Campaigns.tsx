@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Search, ChevronDown, ChevronRight, RefreshCw, Loader2, Copy } from 'lucide-react'
 import { Button } from './ui/button'
 
-const API_BASE = '/api'
+import { API_BASE } from '../config'
 
 interface Campaign {
   id: string

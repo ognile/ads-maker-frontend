@@ -3,7 +3,7 @@ import { X, Search, ChevronRight, ChevronLeft, Loader2, Plus, Copy, AlertTriangl
 import { Button } from './ui/button'
 import type { AdConcept, Product } from '../App'
 
-const API_BASE = '/api'
+import { API_BASE } from '../config'
 
 interface FBCampaign {
   id: string

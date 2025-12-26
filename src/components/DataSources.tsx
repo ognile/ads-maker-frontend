@@ -8,7 +8,7 @@ interface DataSourcesProps {
   onRefresh: () => void
 }
 
-const API_BASE = '/api'
+import { API_BASE } from '../config'
 
 type AddMode = 'file' | 'text'
 

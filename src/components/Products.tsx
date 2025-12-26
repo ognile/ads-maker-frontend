@@ -8,7 +8,7 @@ interface ProductsProps {
   onRefresh: () => void
 }
 
-const API_BASE = '/api'
+import { API_BASE } from '../config'
 
 export function Products({ products, onRefresh }: ProductsProps) {
   const [modalOpen, setModalOpen] = useState(false)
