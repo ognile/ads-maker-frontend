@@ -12,6 +12,7 @@ import { Settings } from './components/Settings'
 import { Library } from './components/Library'
 import { Campaigns } from './components/Campaigns'
 import { Analytics } from './components/Analytics'
+import { Chat } from './components/Chat'
 
 export interface DataSource {
   id: string
@@ -182,7 +183,7 @@ function App() {
     }
   }, [])
 
-  const [view, setView] = useState<'work' | 'library' | 'campaigns' | 'analytics' | 'sources' | 'products' | 'settings'>('work')
+  const [view, setView] = useState<'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'sources' | 'products' | 'settings'>('chat')
   const [isWorking, setIsWorking] = useState(false)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null)
@@ -346,6 +347,12 @@ function App() {
           <span className="text-sm font-semibold tracking-tight">AI Ad Maker</span>
           <div className="flex gap-1">
             <button
+              onClick={() => setView('chat')}
+              className={`px-3 py-1 text-sm ${view === 'chat' ? 'text-black' : 'text-[#A3A3A3] hover:text-[#737373]'}`}
+            >
+              Chat
+            </button>
+            <button
               onClick={() => setView('work')}
               className={`px-3 py-1 text-sm ${view === 'work' ? 'text-black' : 'text-[#A3A3A3] hover:text-[#737373]'}`}
             >
@@ -424,7 +431,9 @@ function App() {
       </header>
 
       {/* Main Content */}
-      {view === 'settings' ? (
+      {view === 'chat' ? (
+        <Chat />
+      ) : view === 'settings' ? (
         <Settings />
       ) : view === 'campaigns' ? (
         <Campaigns />

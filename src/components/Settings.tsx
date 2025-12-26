@@ -1,24 +1,70 @@
 import { useState, useEffect } from 'react'
-import { RefreshCw, Settings as SettingsIcon } from 'lucide-react'
+import { RefreshCw, Settings as SettingsIcon, Bot, Cpu, Eye, Image as ImageIcon } from 'lucide-react'
 import { FacebookConnect } from './FacebookConnect'
 
 interface SettingsData {
   image_generation_enabled: boolean
+  image_aspect_ratio: string
+}
+
+interface ModelOption {
+  id: string
+  name: string
+  provider: string
+}
+
+interface ModelSettings {
+  available_models: Record<string, ModelOption[]>
+  current_models: Record<string, string>
 }
 
 import { API_BASE } from '../config'
 
+const TASK_LABELS: Record<string, { label: string; description: string; icon: typeof Bot }> = {
+  orchestrator: {
+    label: 'Orchestrator',
+    description: 'Chat and command parsing',
+    icon: Bot,
+  },
+  copywriter: {
+    label: 'Copywriter',
+    description: 'Ad copy generation and review',
+    icon: Cpu,
+  },
+  visual_analyzer: {
+    label: 'Visual Analyzer',
+    description: 'Image and creative analysis',
+    icon: Eye,
+  },
+  image_generator: {
+    label: 'Image Generator',
+    description: 'AI image generation',
+    icon: ImageIcon,
+  },
+}
+
 export function Settings() {
   const [settings, setSettings] = useState<SettingsData | null>(null)
+  const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [savingModel, setSavingModel] = useState<string | null>(null)
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch(`${API_BASE}/settings`)
-      if (res.ok) {
-        const data = await res.json()
+      const [settingsRes, modelsRes] = await Promise.all([
+        fetch(`${API_BASE}/settings`),
+        fetch(`${API_BASE}/settings/models`),
+      ])
+
+      if (settingsRes.ok) {
+        const data = await settingsRes.json()
         setSettings(data)
+      }
+
+      if (modelsRes.ok) {
+        const data = await modelsRes.json()
+        setModelSettings(data)
       }
     } catch (error) {
       console.error('Failed to fetch settings:', error)
@@ -31,7 +77,7 @@ export function Settings() {
     fetchSettings()
   }, [])
 
-  const updateSetting = async (key: keyof SettingsData, value: boolean) => {
+  const updateSetting = async (key: keyof SettingsData, value: boolean | string) => {
     setIsSaving(true)
     try {
       const res = await fetch(`${API_BASE}/settings`, {
@@ -47,6 +93,27 @@ export function Settings() {
       console.error('Failed to update setting:', error)
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const updateModel = async (task: string, modelId: string) => {
+    setSavingModel(task)
+    try {
+      const res = await fetch(`${API_BASE}/settings/models`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task, model_id: modelId }),
+      })
+      if (res.ok) {
+        setModelSettings(prev => prev ? {
+          ...prev,
+          current_models: { ...prev.current_models, [task]: modelId }
+        } : null)
+      }
+    } catch (error) {
+      console.error('Failed to update model:', error)
+    } finally {
+      setSavingModel(null)
     }
   }
 
@@ -107,6 +174,53 @@ export function Settings() {
               </div>
             </div>
           </div>
+
+          {/* Model Configuration */}
+          {modelSettings && (
+            <div className="border border-[#E5E5E5] p-4">
+              <h3 className="text-xs font-medium text-[#737373] uppercase tracking-wide mb-4">
+                AI Model Configuration
+              </h3>
+
+              <div className="space-y-4">
+                {Object.entries(TASK_LABELS).map(([task, config]) => {
+                  const Icon = config.icon
+                  const availableModels = modelSettings.available_models[task] || []
+                  const currentModel = modelSettings.current_models[task]
+
+                  return (
+                    <div key={task} className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <Icon className="w-5 h-5 text-[#737373] mt-0.5" />
+                        <div>
+                          <span className="text-sm font-medium">{config.label}</span>
+                          <p className="text-xs text-[#A3A3A3] mt-0.5">{config.description}</p>
+                        </div>
+                      </div>
+                      <select
+                        value={currentModel || ''}
+                        onChange={(e) => updateModel(task, e.target.value)}
+                        disabled={savingModel === task}
+                        className={`text-sm border border-[#E5E5E5] px-2 py-1 bg-white focus:outline-none focus:border-black min-w-[200px] ${
+                          savingModel === task ? 'opacity-50' : ''
+                        }`}
+                      >
+                        {availableModels.map(model => (
+                          <option key={model.id} value={model.id}>
+                            {model.name} ({model.provider})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <p className="text-xs text-[#A3A3A3] mt-4">
+                Different models have different capabilities and costs. Claude Opus is most capable but expensive.
+              </p>
+            </div>
+          )}
 
           {/* Facebook Integration */}
           <div className="space-y-2">
