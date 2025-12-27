@@ -100,7 +100,6 @@ export function Learnings() {
 
   // Analysis modal state
   const [showAnalysisModal, setShowAnalysisModal] = useState(false)
-  const [adIdsInput, setAdIdsInput] = useState('')
   const [availableAds, setAvailableAds] = useState<AdForSelection[]>([])
   const [selectedAdIds, setSelectedAdIds] = useState<Set<string>>(new Set())
   const [isLoadingAds, setIsLoadingAds] = useState(false)

@@ -184,16 +184,18 @@ function App() {
     }
   }, [])
 
+  type ViewType = 'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'sources' | 'products' | 'settings'
+  const validViews: ViewType[] = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'sources', 'products', 'settings']
+
   // Read initial view from URL hash or localStorage
-  const getInitialView = (): 'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'sources' | 'products' | 'settings' => {
+  const getInitialView = (): ViewType => {
     const hash = window.location.hash.slice(1)
-    const validViews = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'sources', 'products', 'settings']
-    if (hash && validViews.includes(hash)) {
-      return hash as typeof validViews[number]
+    if (hash && validViews.includes(hash as ViewType)) {
+      return hash as ViewType
     }
     const stored = localStorage.getItem('currentView')
-    if (stored && validViews.includes(stored)) {
-      return stored as typeof validViews[number]
+    if (stored && validViews.includes(stored as ViewType)) {
+      return stored as ViewType
     }
     return 'chat'
   }

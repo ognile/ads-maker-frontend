@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Plus, Sparkles, X, Search, Filter } from 'lucide-react'
+import { Plus, Sparkles, X, Search } from 'lucide-react'
 import { Skeleton } from './ui/skeleton'
 import { Button } from './ui/button'
 import type { AdConcept } from '../App'
