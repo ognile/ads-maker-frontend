@@ -276,7 +276,7 @@ export function Learnings() {
             <span className="text-xs text-[#A3A3A3]">
               {Math.round(learning.confidence * 100)}%
             </span>
-            {learning.source_type === 'analysis' && (
+            {(learning.source_type === 'analysis' || learning.source_type === 'comparison') && (
               <span className="px-1.5 py-0.5 text-xs bg-green-50 text-green-700 border border-green-200">
                 data-backed
               </span>
