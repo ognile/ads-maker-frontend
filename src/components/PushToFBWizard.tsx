@@ -54,20 +54,43 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
   const [isCreatingAdset, setIsCreatingAdset] = useState(false)
   const [linkUrl, setLinkUrl] = useState('')
 
+  // Suggested naming
+  const [suggestedAdsetName, setSuggestedAdsetName] = useState('')
+  const [hasNamingData, setHasNamingData] = useState(false)
+
   // Step 3: Push
   const [isPushing, setIsPushing] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
 
-  // Load campaigns on open
+  // Load campaigns and suggested names on open
   useEffect(() => {
     if (isOpen) {
       fetchCampaigns()
+      fetchSuggestedNames()
       // Pre-fill link URL from product
       if (product?.landing_page_url) {
         setLinkUrl(product.landing_page_url)
       }
     }
   }, [isOpen, product])
+
+  const fetchSuggestedNames = async () => {
+    try {
+      const lp = product?.landing_page_url || ''
+      const res = await fetch(`${API_BASE}/fb/concept/${concept.id}/suggested-names?link_url=${encodeURIComponent(lp)}`)
+      if (res.ok) {
+        const data = await res.json()
+        setSuggestedAdsetName(data.adset_name || '')
+        setHasNamingData(data.has_naming_data || false)
+        // Pre-fill the adset name if we have naming data
+        if (data.has_naming_data && data.adset_name) {
+          setNewAdsetName(data.adset_name)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch suggested names:', err)
+    }
+  }
 
   // Load adsets when campaign selected
   useEffect(() => {
@@ -90,6 +113,9 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
       setPushError(null)
       setAdsetError(null)
       setAdsets([])
+      setSuggestedAdsetName('')
+      setHasNamingData(false)
+      setNewAdsetName('')
     }
   }, [isOpen])
 
@@ -365,12 +391,26 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
                   <p className="text-sm font-medium">
                     {showDuplicateAdset ? `Duplicate: ${duplicateSource?.name}` : 'Create New Ad Set'}
                   </p>
+                  {hasNamingData && suggestedAdsetName && !showDuplicateAdset && (
+                    <div className="bg-green-50 border border-green-200 p-2 rounded">
+                      <p className="text-xs text-green-700 mb-1">Suggested name (from concept):</p>
+                      <p className="text-xs font-mono text-green-800 break-all">{suggestedAdsetName}</p>
+                      {newAdsetName !== suggestedAdsetName && (
+                        <button
+                          onClick={() => setNewAdsetName(suggestedAdsetName)}
+                          className="text-xs text-green-600 hover:text-green-800 mt-1 underline"
+                        >
+                          Use suggested name
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <input
                     type="text"
                     value={newAdsetName}
                     onChange={(e) => setNewAdsetName(e.target.value)}
                     placeholder="Ad set name..."
-                    className="w-full h-9 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
+                    className="w-full h-9 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black font-mono text-xs"
                   />
                   <div>
                     <label className="text-xs text-[#A3A3A3] block mb-1">Daily Budget (cents)</label>
@@ -405,11 +445,17 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
                 </div>
               ) : (
                 <button
-                  onClick={() => setShowNewAdset(true)}
+                  onClick={() => {
+                    setShowNewAdset(true)
+                    // Pre-fill with suggested name if available
+                    if (hasNamingData && suggestedAdsetName) {
+                      setNewAdsetName(suggestedAdsetName)
+                    }
+                  }}
                   className="w-full h-10 border border-dashed border-[#E5E5E5] text-sm text-[#737373] hover:border-black hover:text-black flex items-center justify-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
-                  Create New Ad Set
+                  {hasNamingData ? 'Create Ad Set (with naming convention)' : 'Create New Ad Set'}
                 </button>
               )}
 
