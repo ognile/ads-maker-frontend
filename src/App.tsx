@@ -12,6 +12,7 @@ import { Settings } from './components/Settings'
 import { Library } from './components/Library'
 import { Campaigns } from './components/Campaigns'
 import { Analytics } from './components/Analytics'
+import { Learnings } from './components/Learnings'
 import { Chat } from './components/Chat'
 
 export interface DataSource {
@@ -183,7 +184,7 @@ function App() {
     }
   }, [])
 
-  const [view, setView] = useState<'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'sources' | 'products' | 'settings'>('chat')
+  const [view, setView] = useState<'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'sources' | 'products' | 'settings'>('chat')
   const [isWorking, setIsWorking] = useState(false)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null)
@@ -377,6 +378,12 @@ function App() {
               Analytics
             </button>
             <button
+              onClick={() => setView('learnings')}
+              className={`px-3 py-1 text-sm ${view === 'learnings' ? 'text-black' : 'text-[#A3A3A3] hover:text-[#737373]'}`}
+            >
+              Learnings
+            </button>
+            <button
               onClick={() => setView('sources')}
               className={`px-3 py-1 text-sm ${view === 'sources' ? 'text-black' : 'text-[#A3A3A3] hover:text-[#737373]'}`}
             >
@@ -439,6 +446,8 @@ function App() {
         <Campaigns />
       ) : view === 'analytics' ? (
         <Analytics />
+      ) : view === 'learnings' ? (
+        <Learnings />
       ) : view === 'products' ? (
         <Products
           products={products}

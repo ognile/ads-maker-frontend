@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { RefreshCw, Settings as SettingsIcon, Bot, Cpu, Eye, Image as ImageIcon } from 'lucide-react'
+import { RefreshCw, Settings as SettingsIcon, Bot, Cpu, Eye, Image as ImageIcon, Target, DollarSign } from 'lucide-react'
 import { FacebookConnect } from './FacebookConnect'
 
 interface SettingsData {
@@ -16,6 +16,18 @@ interface ModelOption {
 interface ModelSettings {
   available_models: Record<string, ModelOption[]>
   current_models: Record<string, string>
+}
+
+interface PerformanceGoals {
+  id: string | null
+  product_id: string | null
+  target_cpa: number
+  target_roas: number
+  super_winner_min_spend: number
+  winner_min_spend: number
+  promising_max_spend: number
+  promising_min_sales: number
+  loser_min_spend: number
 }
 
 import { API_BASE } from '../config'
@@ -46,15 +58,19 @@ const TASK_LABELS: Record<string, { label: string; description: string; icon: ty
 export function Settings() {
   const [settings, setSettings] = useState<SettingsData | null>(null)
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null)
+  const [goals, setGoals] = useState<PerformanceGoals | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [savingModel, setSavingModel] = useState<string | null>(null)
+  const [savingGoals, setSavingGoals] = useState(false)
+  const [showAdvancedGoals, setShowAdvancedGoals] = useState(false)
 
   const fetchSettings = async () => {
     try {
-      const [settingsRes, modelsRes] = await Promise.all([
+      const [settingsRes, modelsRes, goalsRes] = await Promise.all([
         fetch(`${API_BASE}/settings`),
         fetch(`${API_BASE}/settings/models`),
+        fetch(`${API_BASE}/settings/goals`),
       ])
 
       if (settingsRes.ok) {
@@ -66,10 +82,34 @@ export function Settings() {
         const data = await modelsRes.json()
         setModelSettings(data)
       }
+
+      if (goalsRes.ok) {
+        const data = await goalsRes.json()
+        setGoals(data)
+      }
     } catch (error) {
       console.error('Failed to fetch settings:', error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const updateGoals = async (updates: Partial<PerformanceGoals>) => {
+    setSavingGoals(true)
+    try {
+      const res = await fetch(`${API_BASE}/settings/goals`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setGoals(data)
+      }
+    } catch (error) {
+      console.error('Failed to update goals:', error)
+    } finally {
+      setSavingGoals(false)
     }
   }
 
@@ -174,6 +214,127 @@ export function Settings() {
               </div>
             </div>
           </div>
+
+          {/* Performance Goals */}
+          {goals && (
+            <div className="border border-[#E5E5E5] p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Target className="w-4 h-4 text-[#737373]" />
+                <h3 className="text-xs font-medium text-[#737373] uppercase tracking-wide">
+                  Performance Goals
+                </h3>
+              </div>
+
+              <div className="space-y-4">
+                {/* Main Goals */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Target CPA
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-[#A3A3A3]" />
+                      <input
+                        type="number"
+                        value={goals.target_cpa}
+                        onChange={(e) => updateGoals({ target_cpa: parseFloat(e.target.value) || 0 })}
+                        disabled={savingGoals}
+                        className="w-full border border-[#E5E5E5] px-3 py-1.5 text-sm focus:outline-none focus:border-black"
+                      />
+                    </div>
+                    <p className="text-xs text-[#A3A3A3] mt-0.5">Max cost per purchase</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Target ROAS
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-[#A3A3A3]">x</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={goals.target_roas}
+                        onChange={(e) => updateGoals({ target_roas: parseFloat(e.target.value) || 0 })}
+                        disabled={savingGoals}
+                        className="w-full border border-[#E5E5E5] px-3 py-1.5 text-sm focus:outline-none focus:border-black"
+                      />
+                    </div>
+                    <p className="text-xs text-[#A3A3A3] mt-0.5">Minimum return on ad spend</p>
+                  </div>
+                </div>
+
+                {/* Advanced Classification Rules */}
+                <div>
+                  <button
+                    onClick={() => setShowAdvancedGoals(!showAdvancedGoals)}
+                    className="text-xs text-[#737373] hover:text-black"
+                  >
+                    {showAdvancedGoals ? '− Hide' : '+ Show'} advanced classification rules
+                  </button>
+
+                  {showAdvancedGoals && (
+                    <div className="mt-4 space-y-3 pl-4 border-l-2 border-[#E5E5E5]">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-[#737373] mb-1">Super Winner Min Spend</label>
+                          <input
+                            type="number"
+                            value={goals.super_winner_min_spend}
+                            onChange={(e) => updateGoals({ super_winner_min_spend: parseFloat(e.target.value) || 0 })}
+                            disabled={savingGoals}
+                            className="w-full border border-[#E5E5E5] px-2 py-1 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-[#737373] mb-1">Winner Min Spend</label>
+                          <input
+                            type="number"
+                            value={goals.winner_min_spend}
+                            onChange={(e) => updateGoals({ winner_min_spend: parseFloat(e.target.value) || 0 })}
+                            disabled={savingGoals}
+                            className="w-full border border-[#E5E5E5] px-2 py-1 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-[#737373] mb-1">Promising Max Spend</label>
+                          <input
+                            type="number"
+                            value={goals.promising_max_spend}
+                            onChange={(e) => updateGoals({ promising_max_spend: parseFloat(e.target.value) || 0 })}
+                            disabled={savingGoals}
+                            className="w-full border border-[#E5E5E5] px-2 py-1 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-[#737373] mb-1">Promising Min Sales</label>
+                          <input
+                            type="number"
+                            value={goals.promising_min_sales}
+                            onChange={(e) => updateGoals({ promising_min_sales: parseInt(e.target.value) || 0 })}
+                            disabled={savingGoals}
+                            className="w-full border border-[#E5E5E5] px-2 py-1 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-[#737373] mb-1">Loser Min Spend</label>
+                          <input
+                            type="number"
+                            value={goals.loser_min_spend}
+                            onChange={(e) => updateGoals({ loser_min_spend: parseFloat(e.target.value) || 0 })}
+                            disabled={savingGoals}
+                            className="w-full border border-[#E5E5E5] px-2 py-1 text-sm"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-[#A3A3A3]">
+                        Thresholds used to classify ads as super winner, winner, promising, or loser.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Model Configuration */}
           {modelSettings && (
