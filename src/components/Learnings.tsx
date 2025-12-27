@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react'
 import { RefreshCw, Plus, ThumbsUp, ThumbsDown, Trash2, Edit2, X, Video, Image as ImageIcon, MessageSquare, Sparkles, Play, ChevronDown, ChevronUp, DollarSign, Target, TrendingUp, Loader2 } from 'lucide-react'
 import { API_BASE } from '../config'
+import { getCachedAds, type CachedAd } from '../utils/analyticsCache'
 
 interface AdMetric {
   ad_name: string
@@ -135,10 +136,32 @@ export function Learnings() {
     fetchLearnings()
   }, [categoryFilter, appliesToFilter])
 
-  const fetchAdsForSelection = async () => {
+  const loadAdsFromCache = () => {
+    // First try to get from analytics cache (instant, no API call)
+    const cachedAds = getCachedAds()
+    if (cachedAds.length > 0) {
+      const ads: AdForSelection[] = cachedAds.map((ad: CachedAd) => ({
+        id: ad.id,
+        name: ad.name || '',
+        thumbnail_url: ad.thumbnail_url,
+        primary_text: ad.primary_text || '',
+        spend: ad.insights?.spend ? parseFloat(String(ad.insights.spend)) : 0,
+        cpa: ad.insights?.cost_per_purchase ? parseFloat(String(ad.insights.cost_per_purchase)) : undefined,
+        roas: ad.insights?.roas ? parseFloat(String(ad.insights.roas)) : undefined,
+      }))
+      // Sort by spend descending
+      ads.sort((a, b) => (b.spend || 0) - (a.spend || 0))
+      setAvailableAds(ads)
+      return true
+    }
+    return false
+  }
+
+  const fetchAdsFromApi = async () => {
     setIsLoadingAds(true)
     try {
-      const res = await fetch(`${API_BASE}/fb/ads/with-insights?date_preset=last_30d&limit=100`)
+      // Fetch last 60 days of ads
+      const res = await fetch(`${API_BASE}/fb/ads/with-insights?date_preset=last_30d&limit=200`)
       if (res.ok) {
         const data = await res.json()
         const ads: AdForSelection[] = data.map((ad: any) => ({
@@ -147,8 +170,8 @@ export function Learnings() {
           thumbnail_url: ad.thumbnail_url,
           primary_text: ad.primary_text || '',
           spend: ad.spend ? parseFloat(ad.spend) : 0,
-          cpa: ad.cpa ? parseFloat(ad.cpa) : null,
-          roas: ad.roas ? parseFloat(ad.roas) : null,
+          cpa: ad.cpa ? parseFloat(ad.cpa) : undefined,
+          roas: ad.roas ? parseFloat(ad.roas) : undefined,
         }))
         // Sort by spend descending
         ads.sort((a, b) => (b.spend || 0) - (a.spend || 0))
@@ -161,10 +184,13 @@ export function Learnings() {
     }
   }
 
-  // Fetch ads when modal opens
+  // Load ads when modal opens - try cache first, fallback to API
   useEffect(() => {
     if (showAnalysisModal && availableAds.length === 0) {
-      fetchAdsForSelection()
+      const loadedFromCache = loadAdsFromCache()
+      if (!loadedFromCache) {
+        fetchAdsFromApi()
+      }
     }
   }, [showAnalysisModal])
 
@@ -292,12 +318,15 @@ export function Learnings() {
   }
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const pendingScrollRef = useRef<{ element: HTMLElement; topBefore: number } | null>(null)
 
   const toggleEvidence = useCallback((id: string, event: React.MouseEvent) => {
-    // Get the clicked element's position relative to viewport
     const clickedElement = event.currentTarget as HTMLElement
-    const rect = clickedElement.getBoundingClientRect()
-    const scrollContainer = scrollContainerRef.current
+    // Store element and its position BEFORE state change
+    pendingScrollRef.current = {
+      element: clickedElement,
+      topBefore: clickedElement.getBoundingClientRect().top
+    }
 
     setExpandedEvidence(prev => {
       const next = new Set(prev)
@@ -308,18 +337,21 @@ export function Learnings() {
       }
       return next
     })
-
-    // After state update, scroll to keep clicked element in view
-    requestAnimationFrame(() => {
-      if (scrollContainer && clickedElement) {
-        const newRect = clickedElement.getBoundingClientRect()
-        const scrollDiff = newRect.top - rect.top
-        if (Math.abs(scrollDiff) > 10) {
-          scrollContainer.scrollTop += scrollDiff
-        }
-      }
-    })
   }, [])
+
+  // Restore scroll position after expand/collapse
+  useLayoutEffect(() => {
+    if (pendingScrollRef.current && scrollContainerRef.current) {
+      const { element, topBefore } = pendingScrollRef.current
+      const topAfter = element.getBoundingClientRect().top
+      const diff = topAfter - topBefore
+
+      if (Math.abs(diff) > 5) {
+        scrollContainerRef.current.scrollTop += diff
+      }
+      pendingScrollRef.current = null
+    }
+  }, [expandedEvidence])
 
   const doLearnings = learnings.filter(l => l.type === 'do')
   const avoidLearnings = learnings.filter(l => l.type === 'avoid')

@@ -23,6 +23,7 @@ import { API_BASE } from '../config'
 const CACHE_KEY = 'analytics_cache_v2'
 const CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
 const COLUMN_PREFS_KEY = 'analytics_column_prefs'
+const OVERVIEW_PREFS_KEY = 'analytics_overview_prefs'
 
 type DatePreset = 'yesterday' | 'last_7d' | 'last_30d' | 'this_month'
 
@@ -33,6 +34,30 @@ interface ColumnConfig {
   visible: boolean
   formatter: 'currency' | 'percent' | 'number' | 'roas'
 }
+
+interface OverviewMetricConfig {
+  id: string
+  label: string
+  visible: boolean
+  size: 'large' | 'small'
+  formatter: 'currency' | 'percent' | 'number' | 'roas'
+  subMetric?: string // e.g., cost_per_purchase for purchases
+}
+
+const DEFAULT_OVERVIEW_METRICS: OverviewMetricConfig[] = [
+  { id: 'spend', label: 'Spend', visible: true, size: 'large', formatter: 'currency' },
+  { id: 'link_ctr', label: 'Link CTR', visible: true, size: 'large', formatter: 'percent' },
+  { id: 'link_cpc', label: 'Link CPC', visible: true, size: 'large', formatter: 'currency' },
+  { id: 'roas', label: 'ROAS', visible: true, size: 'large', formatter: 'roas' },
+  { id: 'purchases', label: 'Purchases', visible: true, size: 'small', formatter: 'number', subMetric: 'cost_per_purchase' },
+  { id: 'add_to_cart', label: 'Add to Cart', visible: true, size: 'small', formatter: 'number', subMetric: 'cost_per_add_to_cart' },
+  { id: 'initiate_checkout', label: 'Checkout', visible: true, size: 'small', formatter: 'number', subMetric: 'cost_per_initiate_checkout' },
+  { id: 'landing_page_views', label: 'LPV', visible: true, size: 'small', formatter: 'number', subMetric: 'cost_per_landing_page_view' },
+  { id: 'traffic_quality', label: 'Traffic Quality', visible: true, size: 'small', formatter: 'percent' },
+  { id: 'impressions', label: 'Impressions', visible: false, size: 'small', formatter: 'number' },
+  { id: 'reach', label: 'Reach', visible: false, size: 'small', formatter: 'number' },
+  { id: 'link_clicks', label: 'Link Clicks', visible: false, size: 'small', formatter: 'number' },
+]
 
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'spend', label: 'Spend', shortLabel: 'Spend', visible: true, formatter: 'currency' },
@@ -95,6 +120,8 @@ interface Ad {
   name: string
   is_ai_generated: boolean
   insights: AdInsights
+  thumbnail_url?: string
+  primary_text?: string
 }
 
 interface CacheData {
@@ -179,6 +206,34 @@ const saveCacheToStorage = (data: Record<DatePreset, { insights: Insights | null
   }
 }
 
+// Load overview preferences from localStorage
+const loadOverviewPrefs = (): OverviewMetricConfig[] => {
+  try {
+    const saved = localStorage.getItem(OVERVIEW_PREFS_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      // Merge with defaults to handle new metrics
+      const merged = DEFAULT_OVERVIEW_METRICS.map(def => {
+        const savedItem = parsed.find((p: OverviewMetricConfig) => p.id === def.id)
+        return savedItem ? { ...def, visible: savedItem.visible, size: savedItem.size || def.size } : def
+      })
+      // Reorder based on saved order
+      const orderedIds = parsed.map((p: OverviewMetricConfig) => p.id)
+      merged.sort((a, b) => {
+        const aIdx = orderedIds.indexOf(a.id)
+        const bIdx = orderedIds.indexOf(b.id)
+        if (aIdx === -1) return 1
+        if (bIdx === -1) return -1
+        return aIdx - bIdx
+      })
+      return merged
+    }
+  } catch (e) {
+    console.error('Failed to load overview prefs:', e)
+  }
+  return DEFAULT_OVERVIEW_METRICS
+}
+
 // Load column preferences from localStorage
 const loadColumnPrefs = (): ColumnConfig[] => {
   try {
@@ -187,8 +242,8 @@ const loadColumnPrefs = (): ColumnConfig[] => {
       const parsed = JSON.parse(saved)
       // Merge with defaults to handle new columns
       const merged = DEFAULT_COLUMNS.map(def => {
-        const saved = parsed.find((p: ColumnConfig) => p.id === def.id)
-        return saved ? { ...def, visible: saved.visible } : def
+        const savedItem = parsed.find((p: ColumnConfig) => p.id === def.id)
+        return savedItem ? { ...def, visible: savedItem.visible } : def
       })
       // Reorder based on saved order
       const orderedIds = parsed.map((p: ColumnConfig) => p.id)
@@ -216,6 +271,8 @@ export function Analytics() {
   const [error, setError] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [columns, setColumns] = useState<ColumnConfig[]>(() => loadColumnPrefs())
+  const [overviewMetrics, setOverviewMetrics] = useState<OverviewMetricConfig[]>(() => loadOverviewPrefs())
+  const [settingsTab, setSettingsTab] = useState<'columns' | 'overview'>('columns')
 
   // DnD sensors
   const sensors = useSensors(
@@ -249,6 +306,11 @@ export function Analytics() {
   useEffect(() => {
     localStorage.setItem(COLUMN_PREFS_KEY, JSON.stringify(columns))
   }, [columns])
+
+  // Save overview preferences whenever they change
+  useEffect(() => {
+    localStorage.setItem(OVERVIEW_PREFS_KEY, JSON.stringify(overviewMetrics))
+  }, [overviewMetrics])
 
   useEffect(() => {
     if (!cache[datePreset]) {
@@ -317,8 +379,17 @@ export function Analytics() {
     ))
   }
 
-  // Visible columns only
+  // Toggle overview metric visibility
+  const toggleOverviewMetric = (id: string) => {
+    setOverviewMetrics(metrics => metrics.map(m =>
+      m.id === id ? { ...m, visible: !m.visible } : m
+    ))
+  }
+
+  // Visible columns and overview metrics
   const visibleColumns = columns.filter(c => c.visible)
+  const visibleOverviewLarge = overviewMetrics.filter(m => m.visible && m.size === 'large')
+  const visibleOverviewSmall = overviewMetrics.filter(m => m.visible && m.size === 'small')
 
   // AI vs Manual comparison
   const comparison = useMemo(() => {
@@ -510,59 +581,46 @@ export function Analytics() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-4 gap-4 mb-4">
-                <div className="border border-[#E5E5E5] p-4">
-                  <p className="text-xs text-[#A3A3A3]">Spend</p>
-                  <p className="text-2xl font-semibold mt-1">{formatCurrency(accountInsights.spend)}</p>
+              {/* Large metrics row */}
+              {visibleOverviewLarge.length > 0 && (
+                <div className={`grid gap-4 mb-4`} style={{ gridTemplateColumns: `repeat(${Math.min(visibleOverviewLarge.length, 4)}, minmax(0, 1fr))` }}>
+                  {visibleOverviewLarge.map(metric => {
+                    const value = accountInsights[metric.id as keyof Insights]
+                    return (
+                      <div key={metric.id} className="border border-[#E5E5E5] p-4">
+                        <p className="text-xs text-[#A3A3A3]">{metric.label}</p>
+                        <p className="text-2xl font-semibold mt-1">{formatValue(value, metric.formatter)}</p>
+                      </div>
+                    )
+                  })}
                 </div>
-                <div className="border border-[#E5E5E5] p-4">
-                  <p className="text-xs text-[#A3A3A3]">Link CTR</p>
-                  <p className="text-2xl font-semibold mt-1">{formatPercent(accountInsights.link_ctr)}</p>
+              )}
+              {/* Small metrics row */}
+              {visibleOverviewSmall.length > 0 && (
+                <div className={`grid gap-4`} style={{ gridTemplateColumns: `repeat(${Math.min(visibleOverviewSmall.length, 5)}, minmax(0, 1fr))` }}>
+                  {visibleOverviewSmall.map(metric => {
+                    const value = accountInsights[metric.id as keyof Insights]
+                    const subValue = metric.subMetric ? accountInsights[metric.subMetric as keyof Insights] : null
+                    const isTrafficQuality = metric.id === 'traffic_quality'
+                    return (
+                      <div key={metric.id} className="border border-[#E5E5E5] p-4">
+                        <p className="text-xs text-[#A3A3A3]">{metric.label}</p>
+                        <p className="text-xl font-semibold mt-1">
+                          {isTrafficQuality && value
+                            ? ((value as number) * 100).toFixed(1) + '%'
+                            : formatValue(value, metric.formatter)}
+                        </p>
+                        {subValue && (
+                          <p className="text-xs text-[#A3A3A3] mt-1">@ {formatCurrency(subValue as number)}</p>
+                        )}
+                        {isTrafficQuality && (
+                          <p className="text-xs text-[#A3A3A3] mt-1">LPV / Link Clicks</p>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
-                <div className="border border-[#E5E5E5] p-4">
-                  <p className="text-xs text-[#A3A3A3]">Link CPC</p>
-                  <p className="text-2xl font-semibold mt-1">{formatCurrency(accountInsights.link_cpc)}</p>
-                </div>
-                <div className="border border-[#E5E5E5] p-4">
-                  <p className="text-xs text-[#A3A3A3]">ROAS</p>
-                  <p className="text-2xl font-semibold mt-1">{accountInsights.roas ? accountInsights.roas.toFixed(2) + 'x' : '-'}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-5 gap-4">
-                <div className="border border-[#E5E5E5] p-4">
-                  <p className="text-xs text-[#A3A3A3]">Purchases</p>
-                  <p className="text-xl font-semibold mt-1">{accountInsights.purchases || 0}</p>
-                  {accountInsights.cost_per_purchase && (
-                    <p className="text-xs text-[#A3A3A3] mt-1">@ {formatCurrency(accountInsights.cost_per_purchase)}</p>
-                  )}
-                </div>
-                <div className="border border-[#E5E5E5] p-4">
-                  <p className="text-xs text-[#A3A3A3]">Add to Cart</p>
-                  <p className="text-xl font-semibold mt-1">{accountInsights.add_to_cart || 0}</p>
-                  {accountInsights.cost_per_add_to_cart && (
-                    <p className="text-xs text-[#A3A3A3] mt-1">@ {formatCurrency(accountInsights.cost_per_add_to_cart)}</p>
-                  )}
-                </div>
-                <div className="border border-[#E5E5E5] p-4">
-                  <p className="text-xs text-[#A3A3A3]">Checkout</p>
-                  <p className="text-xl font-semibold mt-1">{accountInsights.initiate_checkout || 0}</p>
-                  {accountInsights.cost_per_initiate_checkout && (
-                    <p className="text-xs text-[#A3A3A3] mt-1">@ {formatCurrency(accountInsights.cost_per_initiate_checkout)}</p>
-                  )}
-                </div>
-                <div className="border border-[#E5E5E5] p-4">
-                  <p className="text-xs text-[#A3A3A3]">LPV</p>
-                  <p className="text-xl font-semibold mt-1">{accountInsights.landing_page_views || 0}</p>
-                  {accountInsights.cost_per_landing_page_view && (
-                    <p className="text-xs text-[#A3A3A3] mt-1">@ {formatCurrency(accountInsights.cost_per_landing_page_view)}</p>
-                  )}
-                </div>
-                <div className="border border-[#E5E5E5] p-4">
-                  <p className="text-xs text-[#A3A3A3]">Traffic Quality</p>
-                  <p className="text-xl font-semibold mt-1">{accountInsights.traffic_quality ? (accountInsights.traffic_quality * 100).toFixed(1) + '%' : '-'}</p>
-                  <p className="text-xs text-[#A3A3A3] mt-1">LPV / Link Clicks</p>
-                </div>
-              </div>
+              )}
             </>
           )}
         </div>
@@ -759,41 +817,116 @@ export function Analytics() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white w-full max-w-md max-h-[80vh] flex flex-col">
             <div className="p-4 border-b border-[#E5E5E5] flex items-center justify-between">
-              <h2 className="text-lg font-medium">Column Settings</h2>
+              <h2 className="text-lg font-medium">Analytics Settings</h2>
               <button onClick={() => setShowSettings(false)} className="text-[#A3A3A3] hover:text-black">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 flex-1 overflow-y-auto">
-              <p className="text-sm text-[#737373] mb-4">
-                Drag to reorder. Check/uncheck to show/hide columns.
-              </p>
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
+
+            {/* Tabs */}
+            <div className="flex border-b border-[#E5E5E5]">
+              <button
+                onClick={() => setSettingsTab('overview')}
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                  settingsTab === 'overview'
+                    ? 'border-b-2 border-black text-black'
+                    : 'text-[#737373] hover:text-black'
+                }`}
               >
-                <SortableContext
-                  items={columns.map(c => c.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="space-y-2">
-                    {columns.map(col => (
-                      <SortableColumnItem
-                        key={col.id}
-                        column={col}
-                        onToggle={toggleColumn}
-                      />
-                    ))}
+                Overview Cards
+              </button>
+              <button
+                onClick={() => setSettingsTab('columns')}
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                  settingsTab === 'columns'
+                    ? 'border-b-2 border-black text-black'
+                    : 'text-[#737373] hover:text-black'
+                }`}
+              >
+                Table Columns
+              </button>
+            </div>
+
+            <div className="p-4 flex-1 overflow-y-auto">
+              {settingsTab === 'columns' ? (
+                <>
+                  <p className="text-sm text-[#737373] mb-4">
+                    Drag to reorder. Check/uncheck to show/hide columns.
+                  </p>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext
+                      items={columns.map(c => c.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-2">
+                        {columns.map(col => (
+                          <SortableColumnItem
+                            key={col.id}
+                            column={col}
+                            onToggle={toggleColumn}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-[#737373] mb-4">
+                    Choose which metrics to display in the account overview section.
+                  </p>
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-xs font-medium text-[#A3A3A3] mb-2">LARGE CARDS (Top Row)</h3>
+                      <div className="space-y-2">
+                        {overviewMetrics.filter(m => m.size === 'large').map(metric => (
+                          <label key={metric.id} className="flex items-center gap-3 p-2 border border-[#E5E5E5] cursor-pointer hover:bg-[#FAFAFA]">
+                            <input
+                              type="checkbox"
+                              checked={metric.visible}
+                              onChange={() => toggleOverviewMetric(metric.id)}
+                              className="w-4 h-4 accent-black"
+                            />
+                            <span className="text-sm">{metric.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-medium text-[#A3A3A3] mb-2">SMALL CARDS (Bottom Row)</h3>
+                      <div className="space-y-2">
+                        {overviewMetrics.filter(m => m.size === 'small').map(metric => (
+                          <label key={metric.id} className="flex items-center gap-3 p-2 border border-[#E5E5E5] cursor-pointer hover:bg-[#FAFAFA]">
+                            <input
+                              type="checkbox"
+                              checked={metric.visible}
+                              onChange={() => toggleOverviewMetric(metric.id)}
+                              className="w-4 h-4 accent-black"
+                            />
+                            <span className="text-sm">{metric.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                </SortableContext>
-              </DndContext>
+                </>
+              )}
             </div>
             <div className="p-4 border-t border-[#E5E5E5] flex justify-between">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setColumns(DEFAULT_COLUMNS)}
+                onClick={() => {
+                  if (settingsTab === 'columns') {
+                    setColumns(DEFAULT_COLUMNS)
+                  } else {
+                    setOverviewMetrics(DEFAULT_OVERVIEW_METRICS)
+                  }
+                }}
               >
                 Reset to Default
               </Button>
