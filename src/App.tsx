@@ -116,11 +116,11 @@ async function fetchProducts(): Promise<Product[]> {
   return res.json()
 }
 
-async function startWorking(productId: string | null): Promise<void> {
+async function startWorking(productId: string | null, ideas?: string): Promise<void> {
   const res = await fetch(`${API_BASE}/start-working`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ product_id: productId }),
+    body: JSON.stringify({ product_id: productId, ideas }),
   })
   if (!res.ok) throw new Error('Failed to start')
 }
@@ -184,7 +184,41 @@ function App() {
     }
   }, [])
 
-  const [view, setView] = useState<'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'sources' | 'products' | 'settings'>('chat')
+  // Read initial view from URL hash or localStorage
+  const getInitialView = (): 'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'sources' | 'products' | 'settings' => {
+    const hash = window.location.hash.slice(1)
+    const validViews = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'sources', 'products', 'settings']
+    if (hash && validViews.includes(hash)) {
+      return hash as typeof validViews[number]
+    }
+    const stored = localStorage.getItem('currentView')
+    if (stored && validViews.includes(stored)) {
+      return stored as typeof validViews[number]
+    }
+    return 'chat'
+  }
+
+  const [view, setViewState] = useState<'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'sources' | 'products' | 'settings'>(getInitialView)
+
+  // Wrapper to persist view changes
+  const setView = (newView: typeof view) => {
+    setViewState(newView)
+    window.location.hash = newView
+    localStorage.setItem('currentView', newView)
+  }
+
+  // Handle browser back/forward
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.slice(1)
+      const validViews = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'sources', 'products', 'settings']
+      if (hash && validViews.includes(hash)) {
+        setViewState(hash as typeof view)
+      }
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
   const [isWorking, setIsWorking] = useState(false)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null)
@@ -220,12 +254,16 @@ function App() {
   }, [products, selectedProductId])
 
   const startMutation = useMutation({
-    mutationFn: (productId: string | null) => startWorking(productId),
+    mutationFn: ({ productId, ideas }: { productId: string | null; ideas?: string }) => startWorking(productId, ideas),
     onSuccess: () => {
       setIsWorking(true)
       queryClient.invalidateQueries({ queryKey: ['workLog'] })
     },
   })
+
+  const handleCreateConcept = (ideas?: string) => {
+    startMutation.mutate({ productId: selectedProductId, ideas })
+  }
 
   const stopMutation = useMutation({
     mutationFn: stopWorking,
@@ -405,7 +443,7 @@ function App() {
         </div>
 
         <div className="flex items-center gap-3">
-          {!isWorking && products.length > 0 && (
+          {products.length > 0 && (
             <select
               value={selectedProductId || ''}
               onChange={(e) => setSelectedProductId(e.target.value || null)}
@@ -421,19 +459,18 @@ function App() {
 
           {isWorking && (
             <div className="flex items-center gap-2 text-sm">
-              <Circle className="w-2 h-2 fill-black" />
-              <span className="text-[#737373]">Working</span>
+              <Circle className="w-2 h-2 fill-black animate-pulse" />
+              <span className="text-[#737373]">Working...</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => stopMutation.mutate()}
+                disabled={stopMutation.isPending}
+              >
+                Stop
+              </Button>
             </div>
           )}
-
-          <Button
-            variant={isWorking ? 'outline' : 'default'}
-            size="sm"
-            onClick={() => isWorking ? stopMutation.mutate() : startMutation.mutate(selectedProductId)}
-            disabled={startMutation.isPending || stopMutation.isPending || (!isWorking && !selectedProductId)}
-          >
-            {isWorking ? 'Stop' : 'Start'}
-          </Button>
         </div>
       </header>
 
@@ -469,13 +506,15 @@ function App() {
       ) : view === 'work' ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 flex overflow-hidden">
-            {/* Left: Concept List - 180px */}
-            <div className="w-[180px] border-r border-[#E5E5E5] flex-shrink-0">
+            {/* Left: Concept List - 220px */}
+            <div className="w-[220px] border-r border-[#E5E5E5] flex-shrink-0">
               <ConceptList
                 concepts={concepts}
                 selectedId={selectedConceptId}
                 onSelect={setSelectedConceptId}
                 isLoading={isLoadingConcepts}
+                isWorking={isWorking}
+                onCreateConcept={handleCreateConcept}
               />
             </div>
 

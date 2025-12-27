@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { RefreshCw, Plus, ThumbsUp, ThumbsDown, Trash2, Edit2, X, Video, Image as ImageIcon, MessageSquare, Sparkles, Play, ChevronDown, ChevronUp, DollarSign, Target, TrendingUp, Loader2 } from 'lucide-react'
 import { API_BASE } from '../config'
 
@@ -46,6 +46,16 @@ interface AnalysisResult {
   summary: string
 }
 
+interface AdForSelection {
+  id: string
+  name: string
+  thumbnail_url?: string
+  primary_text?: string
+  spend?: number
+  cpa?: number
+  roas?: number
+}
+
 const CATEGORIES = ['visual', 'copy', 'hook', 'cta', 'targeting', 'offer', 'format', 'mechanism', 'avatar']
 const APPLIES_TO_OPTIONS = ['all', 'video', 'image', 'text']
 
@@ -91,6 +101,10 @@ export function Learnings() {
   // Analysis modal state
   const [showAnalysisModal, setShowAnalysisModal] = useState(false)
   const [adIdsInput, setAdIdsInput] = useState('')
+  const [availableAds, setAvailableAds] = useState<AdForSelection[]>([])
+  const [selectedAdIds, setSelectedAdIds] = useState<Set<string>>(new Set())
+  const [isLoadingAds, setIsLoadingAds] = useState(false)
+  const [adSearchQuery, setAdSearchQuery] = useState('')
 
   // Form state
   const [formInsight, setFormInsight] = useState('')
@@ -122,14 +136,44 @@ export function Learnings() {
     fetchLearnings()
   }, [categoryFilter, appliesToFilter])
 
+  const fetchAdsForSelection = async () => {
+    setIsLoadingAds(true)
+    try {
+      const res = await fetch(`${API_BASE}/fb/ads/with-insights?date_preset=last_30d&limit=100`)
+      if (res.ok) {
+        const data = await res.json()
+        const ads: AdForSelection[] = data.map((ad: any) => ({
+          id: ad.id,
+          name: ad.name || '',
+          thumbnail_url: ad.thumbnail_url,
+          primary_text: ad.primary_text || '',
+          spend: ad.spend ? parseFloat(ad.spend) : 0,
+          cpa: ad.cpa ? parseFloat(ad.cpa) : null,
+          roas: ad.roas ? parseFloat(ad.roas) : null,
+        }))
+        // Sort by spend descending
+        ads.sort((a, b) => (b.spend || 0) - (a.spend || 0))
+        setAvailableAds(ads)
+      }
+    } catch (error) {
+      console.error('Failed to fetch ads:', error)
+    } finally {
+      setIsLoadingAds(false)
+    }
+  }
+
+  // Fetch ads when modal opens
+  useEffect(() => {
+    if (showAnalysisModal && availableAds.length === 0) {
+      fetchAdsForSelection()
+    }
+  }, [showAnalysisModal])
+
   const runAnalysis = async () => {
-    const adIds = adIdsInput
-      .split(/[\n,]/)
-      .map(id => id.trim())
-      .filter(id => id.length > 0)
+    const adIds = Array.from(selectedAdIds)
 
     if (adIds.length === 0) {
-      alert('Please enter at least one ad ID')
+      alert('Please select at least one ad')
       return
     }
 
@@ -157,6 +201,30 @@ export function Learnings() {
     } finally {
       setIsAnalyzing(false)
     }
+  }
+
+  const toggleAdSelection = (adId: string) => {
+    setSelectedAdIds(prev => {
+      const next = new Set(prev)
+      if (next.has(adId)) {
+        next.delete(adId)
+      } else {
+        next.add(adId)
+      }
+      return next
+    })
+  }
+
+  const filteredAds = availableAds.filter(ad =>
+    adSearchQuery === '' ||
+    ad.name.toLowerCase().includes(adSearchQuery.toLowerCase()) ||
+    ad.primary_text?.toLowerCase().includes(adSearchQuery.toLowerCase())
+  )
+
+  // Extract batch number from ad name (e.g., "B0104--Nuora..." -> "B0104")
+  const getBatchNumber = (name: string) => {
+    const match = name.match(/^([A-Z]+\d+)/i)
+    return match ? match[1] : name.slice(0, 10)
   }
 
   const openAddModal = () => {
@@ -224,7 +292,14 @@ export function Learnings() {
     }
   }
 
-  const toggleEvidence = (id: string) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  const toggleEvidence = useCallback((id: string, event: React.MouseEvent) => {
+    // Get the clicked element's position relative to viewport
+    const clickedElement = event.currentTarget as HTMLElement
+    const rect = clickedElement.getBoundingClientRect()
+    const scrollContainer = scrollContainerRef.current
+
     setExpandedEvidence(prev => {
       const next = new Set(prev)
       if (next.has(id)) {
@@ -234,7 +309,18 @@ export function Learnings() {
       }
       return next
     })
-  }
+
+    // After state update, scroll to keep clicked element in view
+    requestAnimationFrame(() => {
+      if (scrollContainer && clickedElement) {
+        const newRect = clickedElement.getBoundingClientRect()
+        const scrollDiff = newRect.top - rect.top
+        if (Math.abs(scrollDiff) > 10) {
+          scrollContainer.scrollTop += scrollDiff
+        }
+      }
+    })
+  }, [])
 
   const doLearnings = learnings.filter(l => l.type === 'do')
   const avoidLearnings = learnings.filter(l => l.type === 'avoid')
@@ -285,7 +371,7 @@ export function Learnings() {
 
           {hasEvidence && (
             <button
-              onClick={() => toggleEvidence(learning.id)}
+              onClick={(e) => toggleEvidence(learning.id, e)}
               className="flex items-center gap-1 text-xs text-[#737373] hover:text-black"
             >
               {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
@@ -361,7 +447,7 @@ export function Learnings() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto" ref={scrollContainerRef}>
       <div className="max-w-6xl mx-auto p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -464,83 +550,161 @@ export function Learnings() {
         {/* Analysis Modal */}
         {showAnalysisModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white w-full max-w-lg p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Run Ad Analysis</h3>
-                <button onClick={() => setShowAnalysisModal(false)} className="p-1 hover:bg-gray-100">
+            <div className="bg-white w-full max-w-2xl max-h-[80vh] flex flex-col">
+              <div className="flex items-center justify-between p-4 border-b border-[#E5E5E5]">
+                <h3 className="text-lg font-semibold">Select Ads to Analyze</h3>
+                <button onClick={() => { setShowAnalysisModal(false); setSelectedAdIds(new Set()); setAnalysisResult(null) }} className="p-1 hover:bg-gray-100">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               {!analysisResult ? (
                 <>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Enter Ad IDs to analyze
-                    </label>
-                    <textarea
-                      value={adIdsInput}
-                      onChange={(e) => setAdIdsInput(e.target.value)}
-                      placeholder="120231719096130355&#10;120237141770670355&#10;120235691416930355"
-                      rows={5}
-                      className="w-full border border-[#E5E5E5] px-3 py-2 text-sm font-mono focus:outline-none focus:border-black"
+                  {/* Search */}
+                  <div className="p-4 border-b border-[#E5E5E5]">
+                    <input
+                      type="text"
+                      placeholder="Search ads by name or text..."
+                      value={adSearchQuery}
+                      onChange={(e) => setAdSearchQuery(e.target.value)}
+                      className="w-full border border-[#E5E5E5] px-3 py-2 text-sm focus:outline-none focus:border-black"
                     />
-                    <p className="text-xs text-[#A3A3A3] mt-1">
-                      One ID per line, or comma-separated. Mix of winners and losers works best.
-                    </p>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-xs text-[#737373]">
+                        {selectedAdIds.size} selected • Mix winners and losers for best results
+                      </span>
+                      {selectedAdIds.size > 0 && (
+                        <button
+                          onClick={() => setSelectedAdIds(new Set())}
+                          className="text-xs text-[#737373] hover:text-black"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex justify-end gap-2 pt-4 border-t border-[#E5E5E5]">
+                  {/* Ad List */}
+                  <div className="flex-1 overflow-y-auto p-4">
+                    {isLoadingAds ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-6 h-6 animate-spin text-[#A3A3A3]" />
+                      </div>
+                    ) : filteredAds.length === 0 ? (
+                      <p className="text-sm text-[#A3A3A3] text-center py-8">No ads found</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {filteredAds.map(ad => {
+                          const isSelected = selectedAdIds.has(ad.id)
+                          return (
+                            <button
+                              key={ad.id}
+                              onClick={() => toggleAdSelection(ad.id)}
+                              className={`w-full flex items-start gap-3 p-3 border transition-colors text-left ${
+                                isSelected
+                                  ? 'border-black bg-[#FAFAFA]'
+                                  : 'border-[#E5E5E5] hover:border-[#A3A3A3]'
+                              }`}
+                            >
+                              {/* Checkbox */}
+                              <div className={`w-5 h-5 flex-shrink-0 border-2 flex items-center justify-center ${
+                                isSelected ? 'bg-black border-black' : 'border-[#D4D4D4]'
+                              }`}>
+                                {isSelected && (
+                                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </div>
+
+                              {/* Thumbnail */}
+                              <div className="w-12 h-12 bg-[#F5F5F5] flex-shrink-0 overflow-hidden">
+                                {ad.thumbnail_url ? (
+                                  <img src={ad.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-[#A3A3A3]">
+                                    <ImageIcon className="w-5 h-5" />
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Content */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium">{getBatchNumber(ad.name)}</span>
+                                  {ad.cpa && ad.cpa < 50 && (
+                                    <span className="text-xs px-1 bg-green-100 text-green-700">CPA ${ad.cpa.toFixed(0)}</span>
+                                  )}
+                                  {ad.cpa && ad.cpa >= 50 && (
+                                    <span className="text-xs px-1 bg-red-100 text-red-700">CPA ${ad.cpa.toFixed(0)}</span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-[#737373] truncate mt-0.5">
+                                  {ad.primary_text?.slice(0, 80) || 'No primary text'}
+                                  {ad.primary_text && ad.primary_text.length > 80 ? '...' : ''}
+                                </p>
+                                <div className="flex items-center gap-3 mt-1 text-xs text-[#A3A3A3]">
+                                  <span>${ad.spend?.toFixed(0) || '0'} spent</span>
+                                  {ad.roas && <span>{ad.roas.toFixed(1)}x ROAS</span>}
+                                </div>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex justify-end gap-2 p-4 border-t border-[#E5E5E5]">
                     <button
-                      onClick={() => setShowAnalysisModal(false)}
+                      onClick={() => { setShowAnalysisModal(false); setSelectedAdIds(new Set()) }}
                       className="px-4 py-2 text-sm text-[#737373] hover:text-black"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={runAnalysis}
-                      disabled={isAnalyzing || !adIdsInput.trim()}
+                      disabled={isAnalyzing || selectedAdIds.size === 0}
                       className="px-4 py-2 text-sm bg-black text-white hover:bg-[#333] disabled:opacity-50 inline-flex items-center gap-2"
                     >
                       {isAnalyzing ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          Analyzing...
+                          Analyzing {selectedAdIds.size} ads...
                         </>
                       ) : (
                         <>
                           <Play className="w-4 h-4" />
-                          Analyze Ads
+                          Analyze {selectedAdIds.size} Ads
                         </>
                       )}
                     </button>
                   </div>
                 </>
               ) : (
-                <>
-                  <div className="space-y-4">
-                    <div className="p-4 bg-green-50 border border-green-200 text-green-800">
-                      <div className="font-medium mb-2">Analysis Complete</div>
-                      <div className="text-sm space-y-1">
-                        <p>{analysisResult.ads_analyzed} ads analyzed</p>
-                        <p>{analysisResult.winners} winners, {analysisResult.losers} losers</p>
-                        <p className="font-medium">{analysisResult.learnings_created} learnings extracted</p>
-                      </div>
+                <div className="p-6 space-y-4">
+                  <div className="p-4 bg-green-50 border border-green-200 text-green-800">
+                    <div className="font-medium mb-2">Analysis Complete</div>
+                    <div className="text-sm space-y-1">
+                      <p>{analysisResult.ads_analyzed} ads analyzed</p>
+                      <p>{analysisResult.winners} winners, {analysisResult.losers} losers</p>
+                      <p className="font-medium">{analysisResult.learnings_created} learnings extracted</p>
                     </div>
-
-                    {analysisResult.summary && (
-                      <div>
-                        <label className="block text-xs text-[#737373] mb-1">Summary</label>
-                        <p className="text-sm">{analysisResult.summary}</p>
-                      </div>
-                    )}
                   </div>
+
+                  {analysisResult.summary && (
+                    <div>
+                      <label className="block text-xs text-[#737373] mb-1">Summary</label>
+                      <p className="text-sm">{analysisResult.summary}</p>
+                    </div>
+                  )}
 
                   <div className="flex justify-end gap-2 pt-4 border-t border-[#E5E5E5]">
                     <button
                       onClick={() => {
                         setAnalysisResult(null)
-                        setAdIdsInput('')
+                        setSelectedAdIds(new Set())
                       }}
                       className="px-4 py-2 text-sm text-[#737373] hover:text-black"
                     >
@@ -550,14 +714,14 @@ export function Learnings() {
                       onClick={() => {
                         setShowAnalysisModal(false)
                         setAnalysisResult(null)
-                        setAdIdsInput('')
+                        setSelectedAdIds(new Set())
                       }}
                       className="px-4 py-2 text-sm bg-black text-white hover:bg-[#333]"
                     >
                       Done
                     </button>
                   </div>
-                </>
+                </div>
               )}
             </div>
           </div>

@@ -20,8 +20,8 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 
 import { API_BASE } from '../config'
-const CACHE_KEY = 'analytics_cache'
-const CACHE_TTL = 15 * 60 * 1000 // 15 minutes
+const CACHE_KEY = 'analytics_cache_v2'
+const CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
 const COLUMN_PREFS_KEY = 'analytics_column_prefs'
 
 type DatePreset = 'yesterday' | 'last_7d' | 'last_30d' | 'this_month'
@@ -420,6 +420,22 @@ export function Analytics() {
     this_month: 'This Month',
   }
 
+  const formatTimeAgo = (date: Date) => {
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return 'just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    if (diffDays === 1) return 'yesterday'
+    return `${diffDays} days ago`
+  }
+
+  const isDataStale = lastRefreshed ? (Date.now() - lastRefreshed.getTime()) > CACHE_TTL : true
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
@@ -440,10 +456,16 @@ export function Analytics() {
           ))}
         </div>
         <div className="flex items-center gap-3">
-          {lastRefreshed && (
-            <span className="text-xs text-[#A3A3A3]">
-              Updated {lastRefreshed.toLocaleTimeString()}
-            </span>
+          {lastRefreshed ? (
+            <div className={`text-xs flex items-center gap-1 ${isDataStale ? 'text-orange-600' : 'text-[#A3A3A3]'}`}>
+              <span>Last updated:</span>
+              <span className={`font-medium ${isDataStale ? 'text-orange-700' : 'text-[#525252]'}`}>
+                {formatTimeAgo(lastRefreshed)}
+              </span>
+              {isDataStale && <span className="text-orange-600">(stale)</span>}
+            </div>
+          ) : (
+            <span className="text-xs text-[#A3A3A3]">No data cached</span>
           )}
           <Button
             variant="outline"
@@ -453,13 +475,13 @@ export function Analytics() {
             <Settings className="w-4 h-4" />
           </Button>
           <Button
-            variant="outline"
+            variant={isDataStale ? "default" : "outline"}
             size="sm"
             onClick={fetchData}
             disabled={isLoadingInsights || isLoadingAds}
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingInsights || isLoadingAds ? 'animate-spin' : ''}`} />
-            Refresh
+            {isLoadingInsights || isLoadingAds ? 'Loading...' : 'Refresh'}
           </Button>
         </div>
       </div>
