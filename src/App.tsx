@@ -6,7 +6,7 @@ import { useToast } from './components/ui/toast'
 import { ConceptList } from './components/ConceptList'
 import { ConceptDetail } from './components/ConceptDetail'
 import { WorkLogDrawer } from './components/WorkLogDrawer'
-import { DataSources } from './components/DataSources'
+import { SwipeFile } from './components/SwipeFile'
 import { Products } from './components/Products'
 import { Settings } from './components/Settings'
 import { Library } from './components/Library'
@@ -184,8 +184,8 @@ function App() {
     }
   }, [])
 
-  type ViewType = 'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'sources' | 'products' | 'settings'
-  const validViews: ViewType[] = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'sources', 'products', 'settings']
+  type ViewType = 'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'swipes' | 'products' | 'settings'
+  const validViews: ViewType[] = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'swipes', 'products', 'settings']
 
   // Read initial view from URL hash or localStorage
   const getInitialView = (): ViewType => {
@@ -200,7 +200,7 @@ function App() {
     return 'chat'
   }
 
-  const [view, setViewState] = useState<'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'sources' | 'products' | 'settings'>(getInitialView)
+  const [view, setViewState] = useState<'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'swipes' | 'products' | 'settings'>(getInitialView)
 
   // Wrapper to persist view changes
   const setView = (newView: typeof view) => {
@@ -213,7 +213,7 @@ function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.slice(1)
-      const validViews = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'sources', 'products', 'settings']
+      const validViews = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'swipes', 'products', 'settings']
       if (hash && validViews.includes(hash)) {
         setViewState(hash as typeof view)
       }
@@ -424,10 +424,10 @@ function App() {
               Learnings
             </button>
             <button
-              onClick={() => setView('sources')}
-              className={`px-3 py-1 text-sm ${view === 'sources' ? 'text-black' : 'text-[#A3A3A3] hover:text-[#737373]'}`}
+              onClick={() => setView('swipes')}
+              className={`px-3 py-1 text-sm ${view === 'swipes' ? 'text-black' : 'text-[#A3A3A3] hover:text-[#737373]'}`}
             >
-              Sources
+              Swipe File
             </button>
             <button
               onClick={() => setView('products')}
@@ -544,11 +544,8 @@ function App() {
             latestMessage={latestLog?.message}
           />
         </div>
-      ) : view === 'sources' ? (
-        <DataSources
-          sources={dataSources}
-          onRefresh={() => queryClient.invalidateQueries({ queryKey: ['dataSources'] })}
-        />
+      ) : view === 'swipes' ? (
+        <SwipeFile />
       ) : null}
     </div>
   )

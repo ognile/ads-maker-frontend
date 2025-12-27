@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { RefreshCw, Settings as SettingsIcon, Bot, Cpu, Eye, Image as ImageIcon, Target, DollarSign } from 'lucide-react'
+import { RefreshCw, Settings as SettingsIcon, Bot, Cpu, Eye, Image as ImageIcon, Target, DollarSign, BookOpen, Save } from 'lucide-react'
 import { FacebookConnect } from './FacebookConnect'
+import { Button } from './ui/button'
 
 interface SettingsData {
   image_generation_enabled: boolean
@@ -65,12 +66,19 @@ export function Settings() {
   const [savingGoals, setSavingGoals] = useState(false)
   const [showAdvancedGoals, setShowAdvancedGoals] = useState(false)
 
+  // Copywriting principles state
+  const [copywritingPrinciples, setCopywritingPrinciples] = useState<string>('')
+  const [originalPrinciples, setOriginalPrinciples] = useState<string>('')
+  const [savingPrinciples, setSavingPrinciples] = useState(false)
+  const [showPrinciples, setShowPrinciples] = useState(false)
+
   const fetchSettings = async () => {
     try {
-      const [settingsRes, modelsRes, goalsRes] = await Promise.all([
+      const [settingsRes, modelsRes, goalsRes, principlesRes] = await Promise.all([
         fetch(`${API_BASE}/settings`),
         fetch(`${API_BASE}/settings/models`),
         fetch(`${API_BASE}/settings/goals`),
+        fetch(`${API_BASE}/settings/copywriting-principles`),
       ])
 
       if (settingsRes.ok) {
@@ -87,10 +95,34 @@ export function Settings() {
         const data = await goalsRes.json()
         setGoals(data)
       }
+
+      if (principlesRes.ok) {
+        const data = await principlesRes.json()
+        setCopywritingPrinciples(data.principles)
+        setOriginalPrinciples(data.principles)
+      }
     } catch (error) {
       console.error('Failed to fetch settings:', error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const savePrinciples = async () => {
+    setSavingPrinciples(true)
+    try {
+      const res = await fetch(`${API_BASE}/settings/copywriting-principles`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ principles: copywritingPrinciples }),
+      })
+      if (res.ok) {
+        setOriginalPrinciples(copywritingPrinciples)
+      }
+    } catch (error) {
+      console.error('Failed to save principles:', error)
+    } finally {
+      setSavingPrinciples(false)
     }
   }
 
@@ -389,6 +421,52 @@ export function Settings() {
               Facebook Ads Integration
             </h3>
             <FacebookConnect />
+          </div>
+
+          {/* Copywriting Principles */}
+          <div className="border border-[#E5E5E5] p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-[#737373]" />
+                <h3 className="text-xs font-medium text-[#737373] uppercase tracking-wide">
+                  Copywriting Principles
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowPrinciples(!showPrinciples)}
+                className="text-xs text-[#737373] hover:text-black"
+              >
+                {showPrinciples ? '− Hide' : '+ Edit'}
+              </button>
+            </div>
+
+            <p className="text-xs text-[#A3A3A3] mb-3">
+              These principles guide AI-generated ad copy. Edit to match your brand voice and proven frameworks.
+            </p>
+
+            {showPrinciples && (
+              <div className="space-y-3">
+                <textarea
+                  value={copywritingPrinciples}
+                  onChange={(e) => setCopywritingPrinciples(e.target.value)}
+                  className="w-full h-96 p-3 border border-[#E5E5E5] text-sm font-mono resize-none focus:outline-none focus:border-black"
+                  placeholder="Enter your copywriting principles..."
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-[#A3A3A3]">
+                    {copywritingPrinciples !== originalPrinciples ? 'Unsaved changes' : 'No changes'}
+                  </span>
+                  <Button
+                    size="sm"
+                    onClick={savePrinciples}
+                    disabled={copywritingPrinciples === originalPrinciples || savingPrinciples}
+                  >
+                    <Save className="w-3 h-3 mr-1" />
+                    {savingPrinciples ? 'Saving...' : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Info */}
