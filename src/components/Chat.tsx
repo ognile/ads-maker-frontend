@@ -105,6 +105,7 @@ export function Chat() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamContent, setStreamContent] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -143,7 +144,7 @@ export function Chat() {
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamContent])
+  }, [messages, streamContent, pendingUserMessage])
 
   // Create conversation mutation
   const createMutation = useMutation({
@@ -191,6 +192,8 @@ export function Chat() {
     const currentMessage = message
     const currentAttachments = attachments
 
+    // Show user message instantly (optimistic update)
+    setPendingUserMessage(currentMessage)
     setMessage('')
     setAttachments([])
     setIsStreaming(true)
@@ -247,6 +250,7 @@ export function Chat() {
     } finally {
       setIsStreaming(false)
       setStreamContent('')
+      setPendingUserMessage(null)
       queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] })
     }
   }, [message, attachments, selectedConversationId, isStreaming, queryClient])
@@ -341,7 +345,7 @@ export function Chat() {
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {isLoadingMessages ? (
                 <div className="text-center text-sm text-[#A3A3A3]">Loading messages...</div>
-              ) : messages.length === 0 && !streamContent ? (
+              ) : messages.length === 0 && !streamContent && !pendingUserMessage ? (
                 <div className="text-center text-sm text-[#A3A3A3] mt-8">
                   <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
                   <p>No messages yet.</p>
@@ -384,6 +388,28 @@ export function Chat() {
                     </div>
                   ))}
 
+                  {/* Pending user message (optimistic) */}
+                  {pendingUserMessage && (
+                    <div className="flex justify-end">
+                      <div className="max-w-[80%] p-3 text-sm bg-black text-white">
+                        <span className="whitespace-pre-wrap">{pendingUserMessage}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Thinking animation (when waiting for response) */}
+                  {isStreaming && !streamContent && (
+                    <div className="flex justify-start">
+                      <div className="max-w-[80%] p-3 text-sm bg-[#F5F5F5] text-black">
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-black/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <div className="w-2 h-2 bg-black/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <div className="w-2 h-2 bg-black/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Streaming content */}
                   {streamContent && (
                     <div className="flex justify-start">
@@ -393,7 +419,12 @@ export function Chat() {
                             {streamContent}
                           </ReactMarkdown>
                         </div>
-                        <span className="inline-block w-2 h-4 bg-black ml-0.5 animate-pulse" />
+                        {isStreaming && (
+                          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-black/10">
+                            <Loader2 className="w-3 h-3 animate-spin text-black/50" />
+                            <span className="text-xs text-black/50">Working...</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
