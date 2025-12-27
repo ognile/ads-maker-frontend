@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
-import { RefreshCw, Plus, X, Link, Trash2, ExternalLink, Tag, Copy, Check } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { RefreshCw, Plus, X, Link, Trash2, ExternalLink, Tag, Copy, Check, Loader2 } from 'lucide-react'
 import { Button } from './ui/button'
+import { useToast } from './ui/toast'
 
 import { API_BASE } from '../config'
 
@@ -18,6 +19,7 @@ interface Swipe {
   category?: string
   times_referenced: number
   created_at: string
+  status?: 'processing' | 'ready' | 'failed'
 }
 
 interface SwipePreview {
@@ -40,10 +42,14 @@ export function SwipeFile() {
   const [isLoading, setIsLoading] = useState(true)
   const [typeFilter, setTypeFilter] = useState<SwipeTypeFilter>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const toast = useToast()
 
   // Add modal state
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [urlInput, setUrlInput] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Legacy preview flow (keeping for now)
   const [isProcessing, setIsProcessing] = useState(false)
   const [preview, setPreview] = useState<SwipePreview | null>(null)
 
@@ -58,9 +64,53 @@ export function SwipeFile() {
   const [selectedSwipe, setSelectedSwipe] = useState<Swipe | null>(null)
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
 
+  // Polling for processing swipes
+  const pollingRef = useRef<NodeJS.Timeout | null>(null)
+  const prevProcessingIdsRef = useRef<Set<string>>(new Set())
+
   useEffect(() => {
     fetchSwipes()
   }, [typeFilter])
+
+  // Poll for processing swipes and notify when complete
+  useEffect(() => {
+    const processingSwipes = swipes.filter(s => s.status === 'processing')
+    const processingIds = new Set(processingSwipes.map(s => s.id))
+
+    // Check if any previously processing swipes are now ready
+    prevProcessingIdsRef.current.forEach(id => {
+      if (!processingIds.has(id)) {
+        const swipe = swipes.find(s => s.id === id)
+        if (swipe) {
+          if (swipe.status === 'ready' || !swipe.status) {
+            toast.success(`${swipe.reference_code} ready`, {
+              label: 'View',
+              onClick: () => setSelectedSwipe(swipe)
+            })
+          } else if (swipe.status === 'failed') {
+            toast.error(`${swipe.reference_code} failed to process`)
+          }
+        }
+      }
+    })
+
+    prevProcessingIdsRef.current = processingIds
+
+    if (processingSwipes.length > 0 && !pollingRef.current) {
+      pollingRef.current = setInterval(() => {
+        fetchSwipes()
+      }, 3000)
+    } else if (processingSwipes.length === 0 && pollingRef.current) {
+      clearInterval(pollingRef.current)
+      pollingRef.current = null
+    }
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+      }
+    }
+  }, [swipes])
 
   const fetchSwipes = async () => {
     setIsLoading(true)
@@ -113,6 +163,46 @@ export function SwipeFile() {
       })
     } finally {
       setIsProcessing(false)
+    }
+  }
+
+  // New async queue flow - instant feedback
+  const handleAddUrl = async () => {
+    if (!urlInput.trim()) return
+
+    setIsSubmitting(true)
+
+    try {
+      const res = await fetch(`${API_BASE}/swipes/queue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: urlInput.trim(),
+          tags: saveTags.length > 0 ? saveTags : undefined,
+          category: saveCategory || undefined,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        // Close modal immediately
+        setAddModalOpen(false)
+        resetAddForm()
+
+        // Show success toast
+        toast.success(`Added ${data.reference_code} - processing in background`)
+
+        // Refresh list to show processing item
+        fetchSwipes()
+      } else {
+        toast.error(data.detail || 'Failed to queue URL')
+      }
+    } catch (error) {
+      console.error('Failed to queue URL:', error)
+      toast.error('Failed to add URL. Check the URL and try again.')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -287,12 +377,28 @@ export function SwipeFile() {
             {filteredSwipes.map(swipe => (
               <div
                 key={swipe.id}
-                onClick={() => setSelectedSwipe(swipe)}
-                className="border border-[#E5E5E5] hover:border-[#D4D4D4] transition-colors cursor-pointer"
+                onClick={() => swipe.status !== 'processing' && setSelectedSwipe(swipe)}
+                className={`border transition-colors ${
+                  swipe.status === 'processing'
+                    ? 'border-[#E5E5E5] opacity-75 cursor-default'
+                    : swipe.status === 'failed'
+                    ? 'border-red-200 cursor-pointer hover:border-red-300'
+                    : 'border-[#E5E5E5] hover:border-[#D4D4D4] cursor-pointer'
+                }`}
               >
                 {/* Thumbnail */}
                 <div className="aspect-video bg-[#F5F5F5] relative overflow-hidden">
-                  {swipe.thumbnail_url ? (
+                  {swipe.status === 'processing' ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-[#A3A3A3] gap-2">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <span className="text-xs">Processing...</span>
+                    </div>
+                  ) : swipe.status === 'failed' ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-red-400 gap-2">
+                      <X className="w-6 h-6" />
+                      <span className="text-xs">Failed</span>
+                    </div>
+                  ) : swipe.thumbnail_url ? (
                     <img
                       src={swipe.thumbnail_url}
                       alt={swipe.name}
@@ -303,28 +409,32 @@ export function SwipeFile() {
                       <span className="text-2xl font-bold">{swipe.reference_code}</span>
                     </div>
                   )}
-                  <span className={`absolute top-2 left-2 px-1.5 py-0.5 text-[10px] font-medium ${getTypeColor(swipe.swipe_type)}`}>
-                    {getTypeLabel(swipe.swipe_type)}
-                  </span>
+                  {swipe.status !== 'processing' && (
+                    <span className={`absolute top-2 left-2 px-1.5 py-0.5 text-[10px] font-medium ${getTypeColor(swipe.swipe_type)}`}>
+                      {getTypeLabel(swipe.swipe_type)}
+                    </span>
+                  )}
                 </div>
 
                 {/* Info */}
                 <div className="p-3 space-y-2">
                   <div className="flex items-start justify-between">
                     <span className="text-xs font-mono font-bold text-[#737373]">{swipe.reference_code}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        copyReferenceCode(swipe.reference_code)
-                      }}
-                      className="p-1 text-[#A3A3A3] hover:text-black transition-colors"
-                    >
-                      {copiedCode === swipe.reference_code ? (
-                        <Check className="w-3 h-3 text-green-600" />
-                      ) : (
-                        <Copy className="w-3 h-3" />
-                      )}
-                    </button>
+                    {swipe.status !== 'processing' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          copyReferenceCode(swipe.reference_code)
+                        }}
+                        className="p-1 text-[#A3A3A3] hover:text-black transition-colors"
+                      >
+                        {copiedCode === swipe.reference_code ? (
+                          <Check className="w-3 h-3 text-green-600" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                      </button>
+                    )}
                   </div>
                   <p className="text-sm font-medium line-clamp-2">{swipe.name}</p>
                   {swipe.tags && swipe.tags.length > 0 && (
@@ -343,10 +453,10 @@ export function SwipeFile() {
         )}
       </div>
 
-      {/* Add Modal */}
+      {/* Add Modal - Simplified async flow */}
       {addModalOpen && (
         <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
-          <div className="bg-white border border-[#E5E5E5] w-full max-w-2xl m-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white border border-[#E5E5E5] w-full max-w-md m-4">
             <div className="flex items-center justify-between p-4 border-b border-[#E5E5E5]">
               <h3 className="font-medium">Add to Swipe File</h3>
               <button
@@ -364,137 +474,56 @@ export function SwipeFile() {
               {/* URL Input */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">URL</label>
-                <div className="flex gap-2">
-                  <div className="flex-1 relative">
-                    <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3A3A3]" />
-                    <input
-                      type="text"
-                      value={urlInput}
-                      onChange={(e) => setUrlInput(e.target.value)}
-                      placeholder="Paste Facebook post or landing page URL..."
-                      className="w-full h-10 pl-10 pr-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
-                    />
-                  </div>
-                  <Button
-                    onClick={handleProcessUrl}
-                    disabled={!urlInput.trim() || isProcessing}
-                  >
-                    {isProcessing ? 'Processing...' : 'Fetch'}
-                  </Button>
+                <div className="relative">
+                  <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3A3A3]" />
+                  <input
+                    type="text"
+                    value={urlInput}
+                    onChange={(e) => setUrlInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !isSubmitting && handleAddUrl()}
+                    placeholder="Paste Facebook post or landing page URL..."
+                    className="w-full h-10 pl-10 pr-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
+                    autoFocus
+                  />
                 </div>
                 <p className="text-xs text-[#A3A3A3]">
-                  Supported: Facebook posts, landing pages, any public web page
+                  Landing pages, Facebook posts, any public web page
                 </p>
               </div>
 
-              {/* Preview */}
-              {preview && (
-                <div className="border border-[#E5E5E5] p-4 space-y-4">
-                  {preview.success ? (
-                    <>
-                      {/* Thumbnail */}
-                      {preview.thumbnail_url && (
-                        <div className="aspect-video max-h-48 bg-[#F5F5F5] overflow-hidden">
-                          <img
-                            src={preview.thumbnail_url}
-                            alt="Preview"
-                            className="w-full h-full object-contain"
-                          />
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 text-xs font-medium ${getTypeColor(preview.swipe_type)}`}>
-                          {getTypeLabel(preview.swipe_type)}
-                        </span>
-                        <span className="text-xs text-[#737373]">
-                          from {preview.source_platform}
-                        </span>
-                      </div>
-
-                      {/* Transcript Preview */}
-                      <div>
-                        <span className="text-xs font-medium text-[#737373] uppercase">Transcript</span>
-                        <div className="mt-1 p-3 bg-[#FAFAFA] border border-[#E5E5E5] max-h-48 overflow-y-auto">
-                          <pre className="text-xs whitespace-pre-wrap font-sans">
-                            {preview.transcript.slice(0, 1000)}
-                            {preview.transcript.length > 1000 && '...'}
-                          </pre>
-                        </div>
-                        <p className="text-xs text-[#A3A3A3] mt-1">
-                          {preview.transcript.length.toLocaleString()} characters
-                        </p>
-                      </div>
-
-                      {/* Save Form */}
-                      <div className="border-t border-[#E5E5E5] pt-4 space-y-4">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Name</label>
-                          <input
-                            type="text"
-                            value={saveName}
-                            onChange={(e) => setSaveName(e.target.value)}
-                            className="w-full h-9 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Tags</label>
-                          <div className="flex flex-wrap gap-2 mb-2">
-                            {saveTags.map(tag => (
-                              <span
-                                key={tag}
-                                className="flex items-center gap-1 px-2 py-1 bg-[#F5F5F5] text-xs"
-                              >
-                                {tag}
-                                <button onClick={() => removeTag(tag)}>
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={tagInput}
-                              onChange={(e) => setTagInput(e.target.value)}
-                              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-                              placeholder="Add tag..."
-                              className="flex-1 h-8 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
-                            />
-                            <Button variant="outline" size="sm" onClick={addTag}>
-                              <Tag className="w-3 h-3 mr-1" />
-                              Add
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Category</label>
-                          <select
-                            value={saveCategory}
-                            onChange={(e) => setSaveCategory(e.target.value)}
-                            className="w-full h-9 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black bg-white"
-                          >
-                            <option value="">None</option>
-                            <option value="inspiration">Inspiration</option>
-                            <option value="competitor">Competitor</option>
-                            <option value="internal_winner">Internal Winner</option>
-                            <option value="reference">Reference</option>
-                          </select>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-center py-4">
-                      <p className="text-sm text-red-600">{preview.error}</p>
-                    </div>
-                  )}
+              {/* Optional: Tags */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-[#737373]">Tags (optional)</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {saveTags.map(tag => (
+                    <span
+                      key={tag}
+                      className="flex items-center gap-1 px-2 py-1 bg-[#F5F5F5] text-xs"
+                    >
+                      {tag}
+                      <button onClick={() => removeTag(tag)}>
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
                 </div>
-              )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                    placeholder="winner, competitor, hook..."
+                    className="flex-1 h-8 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
+                  />
+                  <Button variant="outline" size="sm" onClick={addTag} disabled={!tagInput.trim()}>
+                    <Tag className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
 
               {/* Actions */}
-              <div className="flex gap-3">
+              <div className="flex gap-3 pt-2">
                 <Button
                   variant="outline"
                   className="flex-1"
@@ -502,18 +531,24 @@ export function SwipeFile() {
                     setAddModalOpen(false)
                     resetAddForm()
                   }}
+                  disabled={isSubmitting}
                 >
                   Cancel
                 </Button>
-                {preview?.success && (
-                  <Button
-                    className="flex-1"
-                    onClick={handleSave}
-                    disabled={!saveName.trim() || isSaving}
-                  >
-                    {isSaving ? 'Saving...' : 'Save to Swipe File'}
-                  </Button>
-                )}
+                <Button
+                  className="flex-1"
+                  onClick={handleAddUrl}
+                  disabled={!urlInput.trim() || isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    'Add'
+                  )}
+                </Button>
               </div>
             </div>
           </div>
