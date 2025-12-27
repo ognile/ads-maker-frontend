@@ -92,12 +92,6 @@ export interface Product {
 
 import { API_BASE } from './config'
 
-async function fetchDataSources(): Promise<DataSource[]> {
-  const res = await fetch(`${API_BASE}/data-sources`)
-  if (!res.ok) throw new Error('Failed to fetch data sources')
-  return res.json()
-}
-
 async function fetchAdConcepts(): Promise<AdConcept[]> {
   const res = await fetch(`${API_BASE}/concepts`)
   if (!res.ok) throw new Error('Failed to fetch concepts')
@@ -225,11 +219,6 @@ function App() {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null)
   const [workLogExpanded, setWorkLogExpanded] = useState(false)
-
-  const { data: dataSources = [] } = useQuery({
-    queryKey: ['dataSources'],
-    queryFn: fetchDataSources,
-  })
 
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
