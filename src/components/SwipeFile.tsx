@@ -19,7 +19,16 @@ interface Swipe {
   category?: string
   times_referenced: number
   created_at: string
-  status?: 'processing' | 'ready' | 'failed'
+  metadata?: {
+    status?: 'processing' | 'ready' | 'failed'
+    error?: string
+    [key: string]: unknown
+  }
+}
+
+// Helper to get status from swipe (from metadata)
+const getSwipeStatus = (swipe: Swipe): 'processing' | 'ready' | 'failed' => {
+  return swipe.metadata?.status || 'ready'
 }
 
 interface SwipePreview {
@@ -74,7 +83,7 @@ export function SwipeFile() {
 
   // Poll for processing swipes and notify when complete
   useEffect(() => {
-    const processingSwipes = swipes.filter(s => s.status === 'processing')
+    const processingSwipes = swipes.filter(s => getSwipeStatus(s) === 'processing')
     const processingIds = new Set(processingSwipes.map(s => s.id))
 
     // Check if any previously processing swipes are now ready
@@ -82,12 +91,13 @@ export function SwipeFile() {
       if (!processingIds.has(id)) {
         const swipe = swipes.find(s => s.id === id)
         if (swipe) {
-          if (swipe.status === 'ready' || !swipe.status) {
+          const status = getSwipeStatus(swipe)
+          if (status === 'ready') {
             toast.success(`${swipe.reference_code} ready`, {
               label: 'View',
               onClick: () => setSelectedSwipe(swipe)
             })
-          } else if (swipe.status === 'failed') {
+          } else if (status === 'failed') {
             toast.error(`${swipe.reference_code} failed to process`)
           }
         }
@@ -374,81 +384,84 @@ export function SwipeFile() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {filteredSwipes.map(swipe => (
-              <div
-                key={swipe.id}
-                onClick={() => swipe.status !== 'processing' && setSelectedSwipe(swipe)}
-                className={`border transition-colors ${
-                  swipe.status === 'processing'
-                    ? 'border-[#E5E5E5] opacity-75 cursor-default'
-                    : swipe.status === 'failed'
-                    ? 'border-red-200 cursor-pointer hover:border-red-300'
-                    : 'border-[#E5E5E5] hover:border-[#D4D4D4] cursor-pointer'
-                }`}
-              >
-                {/* Thumbnail */}
-                <div className="aspect-video bg-[#F5F5F5] relative overflow-hidden">
-                  {swipe.status === 'processing' ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-[#A3A3A3] gap-2">
-                      <Loader2 className="w-6 h-6 animate-spin" />
-                      <span className="text-xs">Processing...</span>
-                    </div>
-                  ) : swipe.status === 'failed' ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-red-400 gap-2">
-                      <X className="w-6 h-6" />
-                      <span className="text-xs">Failed</span>
-                    </div>
-                  ) : swipe.thumbnail_url ? (
-                    <img
-                      src={swipe.thumbnail_url}
-                      alt={swipe.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[#A3A3A3]">
-                      <span className="text-2xl font-bold">{swipe.reference_code}</span>
-                    </div>
-                  )}
-                  {swipe.status !== 'processing' && (
-                    <span className={`absolute top-2 left-2 px-1.5 py-0.5 text-[10px] font-medium ${getTypeColor(swipe.swipe_type)}`}>
-                      {getTypeLabel(swipe.swipe_type)}
-                    </span>
-                  )}
-                </div>
-
-                {/* Info */}
-                <div className="p-3 space-y-2">
-                  <div className="flex items-start justify-between">
-                    <span className="text-xs font-mono font-bold text-[#737373]">{swipe.reference_code}</span>
-                    {swipe.status !== 'processing' && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          copyReferenceCode(swipe.reference_code)
-                        }}
-                        className="p-1 text-[#A3A3A3] hover:text-black transition-colors"
-                      >
-                        {copiedCode === swipe.reference_code ? (
-                          <Check className="w-3 h-3 text-green-600" />
-                        ) : (
-                          <Copy className="w-3 h-3" />
-                        )}
-                      </button>
+            {filteredSwipes.map(swipe => {
+              const status = getSwipeStatus(swipe)
+              return (
+                <div
+                  key={swipe.id}
+                  onClick={() => status !== 'processing' && setSelectedSwipe(swipe)}
+                  className={`border transition-colors ${
+                    status === 'processing'
+                      ? 'border-[#E5E5E5] opacity-75 cursor-default'
+                      : status === 'failed'
+                      ? 'border-red-200 cursor-pointer hover:border-red-300'
+                      : 'border-[#E5E5E5] hover:border-[#D4D4D4] cursor-pointer'
+                  }`}
+                >
+                  {/* Thumbnail */}
+                  <div className="aspect-video bg-[#F5F5F5] relative overflow-hidden">
+                    {status === 'processing' ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-[#A3A3A3] gap-2">
+                        <Loader2 className="w-6 h-6 animate-spin" />
+                        <span className="text-xs">Processing...</span>
+                      </div>
+                    ) : status === 'failed' ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-red-400 gap-2">
+                        <X className="w-6 h-6" />
+                        <span className="text-xs">Failed</span>
+                      </div>
+                    ) : swipe.thumbnail_url ? (
+                      <img
+                        src={swipe.thumbnail_url}
+                        alt={swipe.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[#A3A3A3]">
+                        <span className="text-2xl font-bold">{swipe.reference_code}</span>
+                      </div>
+                    )}
+                    {status !== 'processing' && (
+                      <span className={`absolute top-2 left-2 px-1.5 py-0.5 text-[10px] font-medium ${getTypeColor(swipe.swipe_type)}`}>
+                        {getTypeLabel(swipe.swipe_type)}
+                      </span>
                     )}
                   </div>
-                  <p className="text-sm font-medium line-clamp-2">{swipe.name}</p>
-                  {swipe.tags && swipe.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {swipe.tags.slice(0, 3).map(tag => (
-                        <span key={tag} className="px-1.5 py-0.5 text-[10px] bg-[#F5F5F5] text-[#737373]">
-                          {tag}
-                        </span>
-                      ))}
+
+                  {/* Info */}
+                  <div className="p-3 space-y-2">
+                    <div className="flex items-start justify-between">
+                      <span className="text-xs font-mono font-bold text-[#737373]">{swipe.reference_code}</span>
+                      {status !== 'processing' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            copyReferenceCode(swipe.reference_code)
+                          }}
+                          className="p-1 text-[#A3A3A3] hover:text-black transition-colors"
+                        >
+                          {copiedCode === swipe.reference_code ? (
+                            <Check className="w-3 h-3 text-green-600" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+                      )}
                     </div>
-                  )}
+                    <p className="text-sm font-medium line-clamp-2">{swipe.name}</p>
+                    {swipe.tags && swipe.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {swipe.tags.slice(0, 3).map(tag => (
+                          <span key={tag} className="px-1.5 py-0.5 text-[10px] bg-[#F5F5F5] text-[#737373]">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
