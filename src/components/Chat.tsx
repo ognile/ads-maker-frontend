@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   MessageSquare,
   Plus,
@@ -347,19 +349,27 @@ export function Chat() {
                 </div>
               ) : (
                 <>
-                  {messages.map(msg => (
+                  {messages.filter(msg => msg.content).map(msg => (
                     <div
                       key={msg.id}
                       className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
-                        className={`max-w-[80%] p-3 text-sm whitespace-pre-wrap ${
+                        className={`max-w-[80%] p-3 text-sm ${
                           msg.role === 'user'
                             ? 'bg-black text-white'
                             : 'bg-[#F5F5F5] text-black'
                         }`}
                       >
-                        {msg.content}
+                        {msg.role === 'user' ? (
+                          <span className="whitespace-pre-wrap">{msg.content}</span>
+                        ) : (
+                          <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0.5 prose-strong:font-semibold prose-code:bg-black/10 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-black/10 prose-pre:p-2">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {msg.content || ''}
+                            </ReactMarkdown>
+                          </div>
+                        )}
                         {msg.attachments && msg.attachments.length > 0 && (
                           <div className="mt-2 pt-2 border-t border-white/20">
                             {msg.attachments.map((att: any, i: number) => (
@@ -377,8 +387,12 @@ export function Chat() {
                   {/* Streaming content */}
                   {streamContent && (
                     <div className="flex justify-start">
-                      <div className="max-w-[80%] p-3 text-sm whitespace-pre-wrap bg-[#F5F5F5] text-black">
-                        {streamContent}
+                      <div className="max-w-[80%] p-3 text-sm bg-[#F5F5F5] text-black">
+                        <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0.5 prose-strong:font-semibold prose-code:bg-black/10 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-black/10 prose-pre:p-2">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {streamContent}
+                          </ReactMarkdown>
+                        </div>
                         <span className="inline-block w-2 h-4 bg-black ml-0.5 animate-pulse" />
                       </div>
                     </div>

@@ -1,34 +1,71 @@
 import { useState, useEffect, useMemo } from 'react'
-import { RefreshCw, Loader2, TrendingUp, TrendingDown, Bot, User } from 'lucide-react'
+import { RefreshCw, Loader2, TrendingUp, TrendingDown, Bot, User, Settings, X, GripVertical } from 'lucide-react'
 import { Button } from './ui/button'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 import { API_BASE } from '../config'
 const CACHE_KEY = 'analytics_cache'
 const CACHE_TTL = 15 * 60 * 1000 // 15 minutes
+const COLUMN_PREFS_KEY = 'analytics_column_prefs'
 
 type DatePreset = 'yesterday' | 'last_7d' | 'last_30d' | 'this_month'
+
+interface ColumnConfig {
+  id: string
+  label: string
+  shortLabel: string
+  visible: boolean
+  formatter: 'currency' | 'percent' | 'number' | 'roas'
+}
+
+const DEFAULT_COLUMNS: ColumnConfig[] = [
+  { id: 'spend', label: 'Spend', shortLabel: 'Spend', visible: true, formatter: 'currency' },
+  { id: 'link_ctr', label: 'Link CTR', shortLabel: 'L-CTR', visible: true, formatter: 'percent' },
+  { id: 'link_cpc', label: 'Link CPC', shortLabel: 'L-CPC', visible: true, formatter: 'currency' },
+  { id: 'landing_page_views', label: 'Landing Page Views', shortLabel: 'LPV', visible: true, formatter: 'number' },
+  { id: 'add_to_cart', label: 'Add to Cart', shortLabel: 'ATC', visible: true, formatter: 'number' },
+  { id: 'purchases', label: 'Purchases', shortLabel: 'Purch', visible: true, formatter: 'number' },
+  { id: 'cost_per_purchase', label: 'Cost per Purchase', shortLabel: 'CPP', visible: true, formatter: 'currency' },
+  { id: 'roas', label: 'ROAS', shortLabel: 'ROAS', visible: true, formatter: 'roas' },
+  { id: 'initiate_checkout', label: 'Initiate Checkout', shortLabel: 'IC', visible: false, formatter: 'number' },
+  { id: 'cost_per_add_to_cart', label: 'Cost per ATC', shortLabel: 'CATC', visible: false, formatter: 'currency' },
+  { id: 'cost_per_landing_page_view', label: 'Cost per LPV', shortLabel: 'CLPV', visible: false, formatter: 'currency' },
+  { id: 'cost_per_initiate_checkout', label: 'Cost per IC', shortLabel: 'CIC', visible: false, formatter: 'currency' },
+  { id: 'traffic_quality', label: 'Traffic Quality', shortLabel: 'TQ', visible: false, formatter: 'percent' },
+]
 
 interface Insights {
   spend?: string | number
   impressions?: string | number
   reach?: string | number
-  // Link-specific metrics
   link_clicks?: string | number
   link_ctr?: string | number
   link_cpc?: string | number
-  // Actions
   landing_page_views?: number
   add_to_cart?: number
   initiate_checkout?: number
   purchases?: number
-  // Costs
   cost_per_landing_page_view?: number | null
   cost_per_add_to_cart?: number | null
   cost_per_initiate_checkout?: number | null
   cost_per_purchase?: number | null
-  // ROAS
   roas?: number | null
-  // Custom calculated
   traffic_quality?: number | null
   atc_purchase_ratio?: number | null
 }
@@ -69,13 +106,56 @@ interface CacheData {
   timestamp: number
 }
 
+// Sortable column item component
+function SortableColumnItem({ column, onToggle }: { column: ColumnConfig; onToggle: (id: string) => void }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: column.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-3 p-3 border border-[#E5E5E5] bg-white ${isDragging ? 'shadow-lg' : ''}`}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing text-[#A3A3A3] hover:text-black"
+      >
+        <GripVertical className="w-4 h-4" />
+      </button>
+      <label className="flex items-center gap-2 flex-1 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={column.visible}
+          onChange={() => onToggle(column.id)}
+          className="w-4 h-4 accent-black"
+        />
+        <span className="text-sm">{column.label}</span>
+        <span className="text-xs text-[#A3A3A3]">({column.shortLabel})</span>
+      </label>
+    </div>
+  )
+}
+
 // Load cache from localStorage
 const loadCacheFromStorage = (): Record<DatePreset, { insights: Insights | null; ads: Ad[]; lastRefreshed: number }> => {
   try {
     const saved = localStorage.getItem(CACHE_KEY)
     if (saved) {
       const parsed: CacheData = JSON.parse(saved)
-      // Check if cache is still valid (within TTL)
       if (Date.now() - parsed.timestamp < CACHE_TTL) {
         return parsed.data
       }
@@ -99,13 +179,51 @@ const saveCacheToStorage = (data: Record<DatePreset, { insights: Insights | null
   }
 }
 
+// Load column preferences from localStorage
+const loadColumnPrefs = (): ColumnConfig[] => {
+  try {
+    const saved = localStorage.getItem(COLUMN_PREFS_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      // Merge with defaults to handle new columns
+      const merged = DEFAULT_COLUMNS.map(def => {
+        const saved = parsed.find((p: ColumnConfig) => p.id === def.id)
+        return saved ? { ...def, visible: saved.visible } : def
+      })
+      // Reorder based on saved order
+      const orderedIds = parsed.map((p: ColumnConfig) => p.id)
+      merged.sort((a, b) => {
+        const aIdx = orderedIds.indexOf(a.id)
+        const bIdx = orderedIds.indexOf(b.id)
+        if (aIdx === -1) return 1
+        if (bIdx === -1) return -1
+        return aIdx - bIdx
+      })
+      return merged
+    }
+  } catch (e) {
+    console.error('Failed to load column prefs:', e)
+  }
+  return DEFAULT_COLUMNS
+}
+
 export function Analytics() {
   const [datePreset, setDatePreset] = useState<DatePreset>('last_7d')
   const [isLoadingInsights, setIsLoadingInsights] = useState(false)
   const [isLoadingAds, setIsLoadingAds] = useState(false)
-  const [sortBy, setSortBy] = useState<'spend' | 'link_ctr' | 'link_cpc' | 'cost_per_purchase' | 'roas'>('spend')
+  const [sortBy, setSortBy] = useState<string>('spend')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [error, setError] = useState<string | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
+  const [columns, setColumns] = useState<ColumnConfig[]>(() => loadColumnPrefs())
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   // Cache per date preset - initialize from localStorage
   const [cache, setCache] = useState<Record<DatePreset, {
@@ -127,8 +245,12 @@ export function Analytics() {
     }
   }, [cache])
 
+  // Save column preferences whenever they change
   useEffect(() => {
-    // Only fetch if no cached data for this preset
+    localStorage.setItem(COLUMN_PREFS_KEY, JSON.stringify(columns))
+  }, [columns])
+
+  useEffect(() => {
     if (!cache[datePreset]) {
       fetchData()
     }
@@ -158,7 +280,6 @@ export function Analytics() {
         adsResult = adsData.ads || []
       }
 
-      // Update cache for this preset
       setCache(prev => ({
         ...prev,
         [datePreset]: {
@@ -176,6 +297,28 @@ export function Analytics() {
       setIsLoadingAds(false)
     }
   }
+
+  // Column drag end handler
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      setColumns((items) => {
+        const oldIndex = items.findIndex(i => i.id === active.id)
+        const newIndex = items.findIndex(i => i.id === over.id)
+        return arrayMove(items, oldIndex, newIndex)
+      })
+    }
+  }
+
+  // Toggle column visibility
+  const toggleColumn = (id: string) => {
+    setColumns(cols => cols.map(c =>
+      c.id === id ? { ...c, visible: !c.visible } : c
+    ))
+  }
+
+  // Visible columns only
+  const visibleColumns = columns.filter(c => c.visible)
 
   // AI vs Manual comparison
   const comparison = useMemo(() => {
@@ -229,7 +372,7 @@ export function Analytics() {
   const sortedAds = useMemo(() => {
     return [...ads].sort((a, b) => {
       const getVal = (ad: Ad) => {
-        const val = ad.insights?.[sortBy]
+        const val = (ad.insights as any)?.[sortBy]
         return typeof val === 'number' ? val : parseFloat(String(val || '0'))
       }
       const aVal = getVal(a)
@@ -250,6 +393,24 @@ export function Analytics() {
     const num = typeof value === 'string' ? parseFloat(value) : value
     if (isNaN(num)) return '-'
     return `${num.toFixed(2)}%`
+  }
+
+  const formatValue = (value: any, formatter: string) => {
+    if (value === undefined || value === null) return '-'
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    if (isNaN(num)) return '-'
+
+    switch (formatter) {
+      case 'currency':
+        return `$${num.toFixed(2)}`
+      case 'percent':
+        return `${num.toFixed(2)}%`
+      case 'roas':
+        return `${num.toFixed(2)}x`
+      case 'number':
+      default:
+        return num.toString()
+    }
   }
 
   const datePresetLabels: Record<DatePreset, string> = {
@@ -284,6 +445,13 @@ export function Analytics() {
               Updated {lastRefreshed.toLocaleTimeString()}
             </span>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowSettings(true)}
+          >
+            <Settings className="w-4 h-4" />
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -499,21 +667,17 @@ export function Analytics() {
                 value={`${sortBy}-${sortOrder}`}
                 onChange={(e) => {
                   const [field, order] = e.target.value.split('-')
-                  setSortBy(field as typeof sortBy)
+                  setSortBy(field)
                   setSortOrder(order as 'asc' | 'desc')
                 }}
                 className="h-8 px-2 text-xs border border-[#E5E5E5] bg-white"
               >
-                <option value="spend-desc">Spend (High to Low)</option>
-                <option value="spend-asc">Spend (Low to High)</option>
-                <option value="link_ctr-desc">Link CTR (High to Low)</option>
-                <option value="link_ctr-asc">Link CTR (Low to High)</option>
-                <option value="link_cpc-asc">Link CPC (Low to High)</option>
-                <option value="link_cpc-desc">Link CPC (High to Low)</option>
-                <option value="cost_per_purchase-asc">CPP (Low to High)</option>
-                <option value="cost_per_purchase-desc">CPP (High to Low)</option>
-                <option value="roas-desc">ROAS (High to Low)</option>
-                <option value="roas-asc">ROAS (Low to High)</option>
+                {visibleColumns.map(col => (
+                  <optgroup key={col.id} label={col.label}>
+                    <option value={`${col.id}-desc`}>{col.label} (High to Low)</option>
+                    <option value={`${col.id}-asc`}>{col.label} (Low to High)</option>
+                  </optgroup>
+                ))}
               </select>
             </div>
           </div>
@@ -532,14 +696,11 @@ export function Analytics() {
                 <thead>
                   <tr className="border-b border-[#E5E5E5] bg-[#FAFAFA]">
                     <th className="text-left text-xs font-medium text-[#737373] p-3">Ad</th>
-                    <th className="text-right text-xs font-medium text-[#737373] p-3 w-20">Spend</th>
-                    <th className="text-right text-xs font-medium text-[#737373] p-3 w-16">L-CTR</th>
-                    <th className="text-right text-xs font-medium text-[#737373] p-3 w-16">L-CPC</th>
-                    <th className="text-right text-xs font-medium text-[#737373] p-3 w-14">LPV</th>
-                    <th className="text-right text-xs font-medium text-[#737373] p-3 w-14">ATC</th>
-                    <th className="text-right text-xs font-medium text-[#737373] p-3 w-14">Purch</th>
-                    <th className="text-right text-xs font-medium text-[#737373] p-3 w-16">CPP</th>
-                    <th className="text-right text-xs font-medium text-[#737373] p-3 w-16">ROAS</th>
+                    {visibleColumns.map(col => (
+                      <th key={col.id} className="text-right text-xs font-medium text-[#737373] p-3 w-20">
+                        {col.shortLabel}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -555,14 +716,11 @@ export function Analytics() {
                           <span className="text-sm truncate max-w-[250px]">{ad.name}</span>
                         </div>
                       </td>
-                      <td className="p-3 text-right text-sm">{formatCurrency(ad.insights?.spend)}</td>
-                      <td className="p-3 text-right text-sm">{formatPercent(ad.insights?.link_ctr)}</td>
-                      <td className="p-3 text-right text-sm">{formatCurrency(ad.insights?.link_cpc)}</td>
-                      <td className="p-3 text-right text-sm">{ad.insights?.landing_page_views || '-'}</td>
-                      <td className="p-3 text-right text-sm">{ad.insights?.add_to_cart || '-'}</td>
-                      <td className="p-3 text-right text-sm">{ad.insights?.purchases || '-'}</td>
-                      <td className="p-3 text-right text-sm">{formatCurrency(ad.insights?.cost_per_purchase)}</td>
-                      <td className="p-3 text-right text-sm">{ad.insights?.roas ? ad.insights.roas.toFixed(2) + 'x' : '-'}</td>
+                      {visibleColumns.map(col => (
+                        <td key={col.id} className="p-3 text-right text-sm">
+                          {formatValue((ad.insights as any)?.[col.id], col.formatter)}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
@@ -573,6 +731,60 @@ export function Analytics() {
         </>
         )}
       </div>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white w-full max-w-md max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-[#E5E5E5] flex items-center justify-between">
+              <h2 className="text-lg font-medium">Column Settings</h2>
+              <button onClick={() => setShowSettings(false)} className="text-[#A3A3A3] hover:text-black">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 flex-1 overflow-y-auto">
+              <p className="text-sm text-[#737373] mb-4">
+                Drag to reorder. Check/uncheck to show/hide columns.
+              </p>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={columns.map(c => c.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {columns.map(col => (
+                      <SortableColumnItem
+                        key={col.id}
+                        column={col}
+                        onToggle={toggleColumn}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </div>
+            <div className="p-4 border-t border-[#E5E5E5] flex justify-between">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setColumns(DEFAULT_COLUMNS)}
+              >
+                Reset to Default
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setShowSettings(false)}
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
