@@ -3,6 +3,7 @@ import { RefreshCw, Settings as SettingsIcon, Bot, Cpu, Eye, Image as ImageIcon,
 import { FacebookConnect } from './FacebookConnect'
 import { Button } from './ui/button'
 import { AdvancedSettings } from './AdvancedSettings'
+import { UsageTracking } from './UsageTracking'
 
 interface SettingsData {
   image_generation_enabled: boolean
@@ -248,6 +249,9 @@ export function Settings() {
               </div>
             </div>
           </div>
+
+          {/* API Usage & Costs */}
+          <UsageTracking />
 
           {/* Performance Goals */}
           {goals && (
