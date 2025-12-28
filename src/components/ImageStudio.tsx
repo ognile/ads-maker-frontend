@@ -9,7 +9,6 @@ import {
   Loader2,
   Plus,
   X,
-  ChevronDown,
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from './ui/toast'
