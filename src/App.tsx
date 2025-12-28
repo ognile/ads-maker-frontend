@@ -40,6 +40,8 @@ export interface Hypothesis {
   hypothesis: string
   reasoning: string
   confidence: number
+  format_id?: string
+  format_reasoning?: string
 }
 
 export interface ChangelogEntry {
@@ -73,6 +75,8 @@ export interface AdConcept {
   rating?: number
   drive_folder_id?: string
   created_at: string
+  format_id?: string
+  format_reasoning?: string
 }
 
 export interface WorkLogEntry {

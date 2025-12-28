@@ -246,14 +246,14 @@ export function ConceptDetail({
                         Angle: {(concept.hypothesis as any).angle}
                       </p>
                     )}
-                    {(concept.hypothesis as any).format_id && (
+                    {concept.hypothesis.format_id && (
                       <p className="text-xs text-[#A3A3A3]">
-                        Format: <span className="font-medium">{(concept.hypothesis as any).format_id}</span>
+                        Format: <span className="font-medium text-[#8B5CF6]">{concept.hypothesis.format_id}</span>
                       </p>
                     )}
-                    {(concept.hypothesis as any).format_reasoning && (
+                    {concept.hypothesis.format_reasoning && (
                       <p className="text-xs text-[#737373] italic mt-1">
-                        {(concept.hypothesis as any).format_reasoning}
+                        {concept.hypothesis.format_reasoning}
                       </p>
                     )}
                   </div>
