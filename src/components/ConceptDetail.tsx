@@ -59,7 +59,7 @@ export function ConceptDetail({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [feedback, setFeedback] = useState('')
   const [notes, setNotes] = useState('')
-  const [enlargedImage, setEnlargedImage] = useState<string | null>(null)
+  const [enlargedImage, setEnlargedImage] = useState<{ url: string; prompt?: string } | null>(null)
   const [researchExpanded, setResearchExpanded] = useState(false)
   const [originalExpanded, setOriginalExpanded] = useState(false)
   const [changelogExpanded, setChangelogExpanded] = useState(false)
@@ -287,25 +287,32 @@ export function ConceptDetail({
           <div className="space-y-2">
             <h3 className="text-xs font-medium text-[#737373] uppercase tracking-wide">Images</h3>
             <div className="flex gap-4">
-              {concept.images.map((img, i) => (
-                <div key={i} className="space-y-1">
-                  <button
-                    onClick={() => setEnlargedImage(img)}
-                    className="border border-[#E5E5E5] hover:border-[#D4D4D4] transition-colors"
-                  >
-                    <img
-                      src={img.startsWith('data:') || img.startsWith('http') ? img : `data:image/png;base64,${img}`}
-                      alt={`Generated ${i + 1}`}
-                      className="w-32 h-32 object-cover"
-                    />
-                  </button>
-                  {concept.image_prompts?.[i] && (
-                    <p className="text-xs text-[#A3A3A3] max-w-[128px] line-clamp-3" title={concept.image_prompts[i]}>
-                      {concept.image_prompts[i]}
-                    </p>
-                  )}
-                </div>
-              ))}
+              {concept.images.map((img, i) => {
+                const imgSrc = img.startsWith('data:') || img.startsWith('http') ? img : `data:image/png;base64,${img}`
+                const prompt = concept.image_prompts?.[i]
+                return (
+                  <div key={i} className="space-y-1">
+                    <button
+                      onClick={() => setEnlargedImage({ url: imgSrc, prompt })}
+                      className="border border-[#E5E5E5] hover:border-[#D4D4D4] transition-colors"
+                    >
+                      <img
+                        src={imgSrc}
+                        alt={`Generated ${i + 1}`}
+                        className="w-32 h-32 object-cover"
+                      />
+                    </button>
+                    {prompt && (
+                      <button
+                        onClick={() => setEnlargedImage({ url: imgSrc, prompt })}
+                        className="text-xs text-[#A3A3A3] hover:text-[#737373] max-w-[128px] line-clamp-2 text-left cursor-pointer"
+                      >
+                        {prompt}
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
@@ -606,17 +613,52 @@ export function ConceptDetail({
         </div>
       )}
 
-      {/* Enlarged Image Modal */}
+      {/* Enlarged Image Modal with Prompt */}
       {enlargedImage && (
         <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 cursor-pointer"
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50"
           onClick={() => setEnlargedImage(null)}
         >
-          <img
-            src={enlargedImage.startsWith('data:') || enlargedImage.startsWith('http') ? enlargedImage : `data:image/png;base64,${enlargedImage}`}
-            alt="Enlarged"
-            className="max-w-[90vw] max-h-[90vh] object-contain"
-          />
+          <div
+            className="relative max-w-[90vw] max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setEnlargedImage(null)}
+              className="absolute -top-10 right-0 text-white/70 hover:text-white p-2"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            {/* Image */}
+            <img
+              src={enlargedImage.url}
+              alt="Enlarged"
+              className="max-w-full max-h-[70vh] object-contain rounded"
+            />
+
+            {/* Prompt section */}
+            {enlargedImage.prompt && (
+              <div className="mt-4 bg-white/10 backdrop-blur rounded p-4 max-w-2xl">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <p className="text-xs text-white/50 uppercase tracking-wide mb-2">Image Prompt</p>
+                    <p className="text-sm text-white leading-relaxed">{enlargedImage.prompt}</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(enlargedImage.prompt || '')
+                    }}
+                    className="p-2 text-white/50 hover:text-white hover:bg-white/10 rounded transition-colors flex-shrink-0"
+                    title="Copy prompt"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
