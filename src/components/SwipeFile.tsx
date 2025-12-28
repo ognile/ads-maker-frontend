@@ -26,6 +26,11 @@ interface Swipe {
   }
 }
 
+interface ProcessingProgress {
+  percent: number
+  message: string
+}
+
 // Helper to get status from swipe (from metadata)
 const getSwipeStatus = (swipe: Swipe): 'processing' | 'ready' | 'failed' => {
   return swipe.metadata?.status || 'ready'
@@ -73,6 +78,9 @@ export function SwipeFile() {
   const [selectedSwipe, setSelectedSwipe] = useState<Swipe | null>(null)
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
 
+  // Progress tracking for processing swipes
+  const [progressMap, setProgressMap] = useState<Record<string, ProcessingProgress>>({})
+
   // Polling for processing swipes
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const prevProcessingIdsRef = useRef<Set<string>>(new Set())
@@ -81,14 +89,31 @@ export function SwipeFile() {
     fetchSwipes()
   }, [typeFilter])
 
-  // Poll for processing swipes and notify when complete
+  // Fetch status for a single processing swipe
+  const fetchSwipeStatus = async (swipeId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/swipes/${swipeId}/status`)
+      if (res.ok) {
+        const data = await res.json()
+        return data
+      }
+    } catch (error) {
+      console.error(`Failed to fetch status for ${swipeId}:`, error)
+    }
+    return null
+  }
+
+  // Track processing swipe IDs in a ref to avoid stale closure
+  const processingIdsRef = useRef<string[]>([])
+
+  // Update processing IDs ref when swipes change
   useEffect(() => {
     const processingSwipes = swipes.filter(s => getSwipeStatus(s) === 'processing')
-    const processingIds = new Set(processingSwipes.map(s => s.id))
+    const currentIds = new Set(processingSwipes.map(s => s.id))
 
     // Check if any previously processing swipes are now ready
     prevProcessingIdsRef.current.forEach(id => {
-      if (!processingIds.has(id)) {
+      if (!currentIds.has(id)) {
         const swipe = swipes.find(s => s.id === id)
         if (swipe) {
           const status = getSwipeStatus(swipe)
@@ -97,30 +122,68 @@ export function SwipeFile() {
               label: 'View',
               onClick: () => setSelectedSwipe(swipe)
             })
+            // Clean up progress entry
+            setProgressMap(prev => {
+              const next = { ...prev }
+              delete next[id]
+              return next
+            })
           } else if (status === 'failed') {
             toast.error(`${swipe.reference_code} failed to process`)
+            setProgressMap(prev => {
+              const next = { ...prev }
+              delete next[id]
+              return next
+            })
           }
         }
       }
     })
 
-    prevProcessingIdsRef.current = processingIds
+    prevProcessingIdsRef.current = currentIds
+    processingIdsRef.current = processingSwipes.map(s => s.id)
+  }, [swipes])
 
-    if (processingSwipes.length > 0 && !pollingRef.current) {
-      pollingRef.current = setInterval(() => {
+  // Separate effect for polling to avoid recreating interval
+  useEffect(() => {
+    const pollStatus = async () => {
+      const ids = processingIdsRef.current
+      if (ids.length === 0) return
+
+      let anyComplete = false
+
+      for (const id of ids) {
+        const status = await fetchSwipeStatus(id)
+        if (status) {
+          if (status.status === 'processing') {
+            // Update progress
+            setProgressMap(prev => ({
+              ...prev,
+              [id]: {
+                percent: status.percent || 0,
+                message: status.progress || 'Processing...'
+              }
+            }))
+          } else {
+            // Status changed - refresh full list
+            anyComplete = true
+          }
+        }
+      }
+
+      if (anyComplete) {
         fetchSwipes()
-      }, 3000)
-    } else if (processingSwipes.length === 0 && pollingRef.current) {
-      clearInterval(pollingRef.current)
-      pollingRef.current = null
-    }
-
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current)
       }
     }
-  }, [swipes])
+
+    // Start polling immediately
+    pollStatus()
+
+    // Then poll every 1.5s
+    const interval = setInterval(pollStatus, 1500)
+
+    return () => clearInterval(interval)
+  }, []) // Empty deps - runs once, uses refs for current data
 
   const fetchSwipes = async () => {
     setIsLoading(true)
@@ -401,9 +464,24 @@ export function SwipeFile() {
                   {/* Thumbnail */}
                   <div className="aspect-video bg-[#F5F5F5] relative overflow-hidden">
                     {status === 'processing' ? (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-[#A3A3A3] gap-2">
-                        <Loader2 className="w-6 h-6 animate-spin" />
-                        <span className="text-xs">Processing...</span>
+                      <div className="w-full h-full flex flex-col items-center justify-center text-[#737373] gap-3 px-4">
+                        {/* Progress percentage */}
+                        <span className="text-2xl font-bold tabular-nums">
+                          {progressMap[swipe.id]?.percent || 0}%
+                        </span>
+
+                        {/* Progress bar */}
+                        <div className="w-full h-1.5 bg-[#E5E5E5] overflow-hidden">
+                          <div
+                            className="h-full bg-black transition-all duration-500 ease-out"
+                            style={{ width: `${progressMap[swipe.id]?.percent || 0}%` }}
+                          />
+                        </div>
+
+                        {/* Status message */}
+                        <span className="text-xs text-[#A3A3A3] text-center truncate w-full">
+                          {progressMap[swipe.id]?.message || 'Starting...'}
+                        </span>
                       </div>
                     ) : status === 'failed' ? (
                       <div className="w-full h-full flex flex-col items-center justify-center text-red-400 gap-2">
