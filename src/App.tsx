@@ -14,6 +14,7 @@ import { Campaigns } from './components/Campaigns'
 import { Analytics } from './components/Analytics'
 import { Learnings } from './components/Learnings'
 import { Chat } from './components/Chat'
+import { ImageStudio } from './components/ImageStudio'
 import { useAuth, Login, authFetch } from './auth'
 
 export interface DataSource {
@@ -162,8 +163,8 @@ async function deleteConcept(id: string): Promise<void> {
   if (!res.ok) throw new Error('Failed to delete concept')
 }
 
-type ViewType = 'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'swipes' | 'products' | 'settings'
-const validViews: ViewType[] = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'swipes', 'products', 'settings']
+type ViewType = 'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'swipes' | 'studio' | 'products' | 'settings'
+const validViews: ViewType[] = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'swipes', 'studio', 'products', 'settings']
 
 // Read initial view from URL hash or localStorage
 const getInitialView = (): ViewType => {
@@ -436,6 +437,12 @@ function App() {
               Swipe File
             </button>
             <button
+              onClick={() => setView('studio')}
+              className={`px-3 py-1 text-sm ${view === 'studio' ? 'text-black' : 'text-[#A3A3A3] hover:text-[#737373]'}`}
+            >
+              Studio
+            </button>
+            <button
               onClick={() => setView('products')}
               className={`px-3 py-1 text-sm ${view === 'products' ? 'text-black' : 'text-[#A3A3A3] hover:text-[#737373]'}`}
             >
@@ -564,6 +571,8 @@ function App() {
         </div>
       ) : view === 'swipes' ? (
         <SwipeFile />
+      ) : view === 'studio' ? (
+        <ImageStudio />
       ) : null}
     </div>
   )
