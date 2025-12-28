@@ -37,8 +37,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Check for existing session on mount OR magic link callback
+  // Check for existing session on mount OR magic link callback OR preview mode
   useEffect(() => {
+    // Check for preview mode (for screenshots/testing)
+    const urlParams = new URLSearchParams(window.location.search)
+    const previewToken = urlParams.get('preview_token')
+    if (previewToken === 'nuora_preview_2024') {
+      // Preview mode - set a fake authenticated state
+      localStorage.setItem('auth_token', 'preview_mode')
+      setUser({ id: 'preview', email: 'preview@nuora.com' })
+      setToken('preview_mode')
+      setIsLoading(false)
+      return
+    }
+
     // Check if this is a magic link callback (token in URL hash)
     const hash = window.location.hash
     if (hash && hash.includes('access_token=')) {
@@ -194,6 +206,9 @@ export function getAuthHeaders(): HeadersInit {
   return {}
 }
 
+// Preview token for testing/screenshots
+const PREVIEW_TOKEN = 'nuora_preview_2024'
+
 // Wrapper for authenticated fetch
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const token = localStorage.getItem('auth_token')
@@ -201,6 +216,10 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
   const headers = new Headers(options.headers)
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
+    // If in preview mode, also send the preview token header
+    if (token === 'preview_mode') {
+      headers.set('X-Preview-Token', PREVIEW_TOKEN)
+    }
   }
 
   return fetch(url, {
