@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { RefreshCw, Settings as SettingsIcon, Bot, Cpu, Eye, Image as ImageIcon, Target, DollarSign, BookOpen, Save } from 'lucide-react'
 import { FacebookConnect } from './FacebookConnect'
 import { Button } from './ui/button'
+import { AdvancedSettings } from './AdvancedSettings'
 
 interface SettingsData {
   image_generation_enabled: boolean
@@ -469,6 +470,9 @@ export function Settings() {
               </div>
             )}
           </div>
+
+          {/* Advanced AI Customization */}
+          <AdvancedSettings />
 
           {/* Info */}
           <div className="text-xs text-[#A3A3A3] space-y-1">
