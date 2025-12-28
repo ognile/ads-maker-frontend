@@ -3,6 +3,7 @@ import { RefreshCw, Settings as SettingsIcon, Bot, Cpu, Eye, Image as ImageIcon,
 import { FacebookConnect } from './FacebookConnect'
 import { Button } from './ui/button'
 import { AdvancedSettings } from './AdvancedSettings'
+import { FormatsSection } from './FormatsSection'
 import { UsageTracking } from './UsageTracking'
 
 interface SettingsData {
@@ -428,6 +429,9 @@ export function Settings() {
             </h3>
             <FacebookConnect />
           </div>
+
+          {/* Ad Copy Formats */}
+          <FormatsSection />
 
           {/* Copywriting Principles */}
           <div className="border border-[#E5E5E5] p-4">
