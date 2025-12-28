@@ -49,7 +49,10 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      retry: 1,
+      retry: 3,  // Retry 3 times before failing
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),  // Exponential backoff
+      staleTime: 1000 * 60 * 5,  // Data considered fresh for 5 minutes
+      gcTime: 1000 * 60 * 30,  // Keep in cache for 30 minutes (prevents disappearing)
     },
   },
 })
