@@ -144,6 +144,46 @@ export function ImageStudio() {
     })
   }
 
+  // Compress and resize image to reduce token usage
+  const compressImage = (file: File, maxSize: number = 1024, quality: number = 0.8): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+
+      img.onload = () => {
+        // Calculate new dimensions (max 1024px on longest side)
+        let { width, height } = img
+        if (width > height && width > maxSize) {
+          height = (height * maxSize) / width
+          width = maxSize
+        } else if (height > maxSize) {
+          width = (width * maxSize) / height
+          height = maxSize
+        }
+
+        canvas.width = width
+        canvas.height = height
+        ctx?.drawImage(img, 0, 0, width, height)
+
+        // Convert to JPEG with compression
+        const dataUrl = canvas.toDataURL('image/jpeg', quality)
+        console.log(`Compressed image: ${file.name} - ${Math.round(dataUrl.length / 1024)}KB`)
+        resolve(dataUrl)
+      }
+
+      img.onerror = reject
+
+      // Read file as data URL to load into image
+      const reader = new FileReader()
+      reader.onload = () => {
+        img.src = reader.result as string
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files) return
@@ -154,13 +194,14 @@ export function ImageStudio() {
         break
       }
 
-      // Convert to base64 data URL for preview
-      const reader = new FileReader()
-      reader.onload = () => {
-        const dataUrl = reader.result as string
-        setReferenceImages((prev) => [...prev, dataUrl])
+      try {
+        // Compress and resize before storing
+        const compressedDataUrl = await compressImage(file)
+        setReferenceImages((prev) => [...prev, compressedDataUrl])
+      } catch (err) {
+        console.error('Failed to compress image:', err)
+        toast.error('Failed to process image')
       }
-      reader.readAsDataURL(file)
     }
 
     if (fileInputRef.current) {
