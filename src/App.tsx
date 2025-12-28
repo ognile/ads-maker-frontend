@@ -212,18 +212,21 @@ function App() {
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
     queryFn: fetchProducts,
+    enabled: isAuthenticated,
   })
 
   const { data: concepts = [], isLoading: isLoadingConcepts } = useQuery({
     queryKey: ['concepts'],
     queryFn: fetchAdConcepts,
     refetchInterval: isWorking ? 2000 : false,
+    enabled: isAuthenticated,
   })
 
   const { data: workLog = [] } = useQuery({
     queryKey: ['workLog'],
     queryFn: fetchWorkLog,
     refetchInterval: isWorking ? 1000 : false,
+    enabled: isAuthenticated,
   })
 
   // Auto-select first product if none selected

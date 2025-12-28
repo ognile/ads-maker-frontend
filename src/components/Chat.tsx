@@ -16,7 +16,7 @@ import {
 import { Button } from './ui/button'
 import { ConfirmationCard } from './ConfirmationCard'
 import { API_BASE } from '../config'
-import { authFetch } from '../auth'
+import { authFetch, useAuth } from '../auth'
 
 interface Conversation {
   id: string
@@ -101,6 +101,7 @@ async function uploadFile(conversationId: string, file: File): Promise<Attachmen
 
 export function Chat() {
   const queryClient = useQueryClient()
+  const { isAuthenticated } = useAuth()
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
@@ -117,6 +118,7 @@ export function Chat() {
   const { data: conversations = [], isLoading: isLoadingConversations } = useQuery({
     queryKey: ['conversations'],
     queryFn: fetchConversations,
+    enabled: isAuthenticated,
   })
 
   // Fetch messages for selected conversation
