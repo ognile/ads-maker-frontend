@@ -15,6 +15,7 @@ interface Swipe {
   source_url?: string
   source_platform?: string
   thumbnail_url?: string
+  video_url?: string
   tags?: string[]
   category?: string
   times_referenced: number
@@ -733,8 +734,17 @@ export function SwipeFile() {
             </div>
 
             <div className="p-4 space-y-4">
-              {/* Thumbnail */}
-              {selectedSwipe.thumbnail_url && (
+              {/* Video player for video ads, thumbnail for others */}
+              {selectedSwipe.swipe_type === 'ad_video' && selectedSwipe.video_url ? (
+                <div className="aspect-video max-h-96 bg-black overflow-hidden">
+                  <video
+                    src={selectedSwipe.video_url}
+                    poster={selectedSwipe.thumbnail_url}
+                    controls
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+              ) : selectedSwipe.thumbnail_url ? (
                 <div className="aspect-video max-h-64 bg-[#F5F5F5] overflow-hidden">
                   <img
                     src={selectedSwipe.thumbnail_url}
@@ -742,7 +752,7 @@ export function SwipeFile() {
                     className="w-full h-full object-contain"
                   />
                 </div>
-              )}
+              ) : null}
 
               {/* Name */}
               <h3 className="font-medium text-lg">{selectedSwipe.name}</h3>
