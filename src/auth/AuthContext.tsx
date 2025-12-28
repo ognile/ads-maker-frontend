@@ -43,10 +43,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const urlParams = new URLSearchParams(window.location.search)
     const previewToken = urlParams.get('preview_token')
     if (previewToken === 'nuora_preview_2024') {
-      // Preview mode - set a fake authenticated state
-      localStorage.setItem('auth_token', 'preview_mode')
+      // Preview mode - set a fake authenticated state with actual preview token
+      localStorage.setItem('auth_token', 'nuora_preview_2024')
       setUser({ id: 'preview', email: 'preview@nuora.com' })
-      setToken('preview_mode')
+      setToken('nuora_preview_2024')
       setIsLoading(false)
       return
     }
