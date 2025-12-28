@@ -36,19 +36,6 @@ const getSwipeStatus = (swipe: Swipe): 'processing' | 'ready' | 'failed' => {
   return swipe.metadata?.status || 'ready'
 }
 
-interface SwipePreview {
-  success: boolean
-  swipe_type: string
-  name: string
-  transcript: string
-  visual_description?: string
-  thumbnail_url?: string
-  source_platform: string
-  metadata?: Record<string, any>
-  sections?: Array<{ type: string; content: string }>
-  error?: string
-}
-
 type SwipeTypeFilter = 'all' | 'ad_text' | 'ad_image' | 'ad_video' | 'landing_page'
 
 export function SwipeFile() {
@@ -63,16 +50,10 @@ export function SwipeFile() {
   const [urlInput, setUrlInput] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Legacy preview flow (keeping for now)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [preview, setPreview] = useState<SwipePreview | null>(null)
-
-  // Save form state
-  const [saveName, setSaveName] = useState('')
+  // Save form state (for tags/category in add modal)
   const [saveTags, setSaveTags] = useState<string[]>([])
   const [saveCategory, setSaveCategory] = useState<string>('')
   const [tagInput, setTagInput] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
 
   // Detail modal state
   const [selectedSwipe, setSelectedSwipe] = useState<Swipe | null>(null)
@@ -82,7 +63,6 @@ export function SwipeFile() {
   const [progressMap, setProgressMap] = useState<Record<string, ProcessingProgress>>({})
 
   // Polling for processing swipes
-  const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const prevProcessingIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
@@ -206,40 +186,7 @@ export function SwipeFile() {
     }
   }
 
-  const handleProcessUrl = async () => {
-    if (!urlInput.trim()) return
-
-    setIsProcessing(true)
-    setPreview(null)
-
-    try {
-      const res = await fetch(`${API_BASE}/swipes/from-url`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: urlInput.trim() }),
-      })
-
-      const data = await res.json()
-      setPreview(data)
-      if (data.success) {
-        setSaveName(data.name || '')
-      }
-    } catch (error) {
-      console.error('Failed to process URL:', error)
-      setPreview({
-        success: false,
-        swipe_type: 'unknown',
-        name: '',
-        transcript: '',
-        source_platform: 'unknown',
-        error: 'Failed to process URL',
-      })
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
-  // New async queue flow - instant feedback
+  // Async queue flow - instant feedback
   const handleAddUrl = async () => {
     if (!urlInput.trim()) return
 
@@ -279,41 +226,6 @@ export function SwipeFile() {
     }
   }
 
-  const handleSave = async () => {
-    if (!preview?.success || !saveName.trim()) return
-
-    setIsSaving(true)
-    try {
-      const res = await fetch(`${API_BASE}/swipes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: saveName.trim(),
-          swipe_type: preview.swipe_type,
-          transcript: preview.transcript,
-          visual_description: preview.visual_description,
-          source_url: urlInput.trim(),
-          source_platform: preview.source_platform,
-          thumbnail_url: preview.thumbnail_url,
-          metadata: preview.metadata,
-          sections: preview.sections,
-          tags: saveTags,
-          category: saveCategory || null,
-        }),
-      })
-
-      if (res.ok) {
-        setAddModalOpen(false)
-        resetAddForm()
-        fetchSwipes()
-      }
-    } catch (error) {
-      console.error('Failed to save swipe:', error)
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
   const handleDelete = async (id: string) => {
     try {
       const res = await fetch(`${API_BASE}/swipes/${id}`, { method: 'DELETE' })
@@ -328,8 +240,6 @@ export function SwipeFile() {
 
   const resetAddForm = () => {
     setUrlInput('')
-    setPreview(null)
-    setSaveName('')
     setSaveTags([])
     setSaveCategory('')
     setTagInput('')
