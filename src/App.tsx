@@ -162,55 +162,28 @@ async function deleteConcept(id: string): Promise<void> {
   if (!res.ok) throw new Error('Failed to delete concept')
 }
 
+type ViewType = 'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'swipes' | 'products' | 'settings'
+const validViews: ViewType[] = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'swipes', 'products', 'settings']
+
+// Read initial view from URL hash or localStorage
+const getInitialView = (): ViewType => {
+  const hash = window.location.hash.slice(1)
+  if (hash && validViews.includes(hash as ViewType)) {
+    return hash as ViewType
+  }
+  const stored = localStorage.getItem('currentView')
+  if (stored && validViews.includes(stored as ViewType)) {
+    return stored as ViewType
+  }
+  return 'chat'
+}
+
 function App() {
   const queryClient = useQueryClient()
   const toast = useToast()
   const { isAuthenticated, isLoading: isAuthLoading, user, logout } = useAuth()
 
-  // Handle FB OAuth callback - check for errors and clear URL
-  useEffect(() => {
-    if (window.location.pathname === '/fb-callback') {
-      const params = new URLSearchParams(window.location.search)
-      if (params.get('error')) {
-        // OAuth was cancelled or failed - just go back to home
-        console.log('FB OAuth cancelled:', params.get('error_description'))
-      }
-      // Clear the callback URL
-      window.history.replaceState({}, '', '/')
-    }
-  }, [])
-
-  // Show loading while checking auth
-  if (isAuthLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-white">
-        <div className="text-sm text-[#737373]">Loading...</div>
-      </div>
-    )
-  }
-
-  // Show login if not authenticated
-  if (!isAuthenticated) {
-    return <Login />
-  }
-
-  type ViewType = 'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'swipes' | 'products' | 'settings'
-  const validViews: ViewType[] = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'swipes', 'products', 'settings']
-
-  // Read initial view from URL hash or localStorage
-  const getInitialView = (): ViewType => {
-    const hash = window.location.hash.slice(1)
-    if (hash && validViews.includes(hash as ViewType)) {
-      return hash as ViewType
-    }
-    const stored = localStorage.getItem('currentView')
-    if (stored && validViews.includes(stored as ViewType)) {
-      return stored as ViewType
-    }
-    return 'chat'
-  }
-
-  const [view, setViewState] = useState<'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'swipes' | 'products' | 'settings'>(getInitialView)
+  const [view, setViewState] = useState<ViewType>(getInitialView)
 
   // Wrapper to persist view changes
   const setView = (newView: typeof view) => {
@@ -384,6 +357,31 @@ function App() {
       }
     }
   }, [concepts, selectedConceptId])
+
+  // Handle FB OAuth callback - check for errors and clear URL
+  useEffect(() => {
+    if (window.location.pathname === '/fb-callback') {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('error')) {
+        console.log('FB OAuth cancelled:', params.get('error_description'))
+      }
+      window.history.replaceState({}, '', '/')
+    }
+  }, [])
+
+  // Show loading while checking auth
+  if (isAuthLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-white">
+        <div className="text-sm text-[#737373]">Loading...</div>
+      </div>
+    )
+  }
+
+  // Show login if not authenticated
+  if (!isAuthenticated) {
+    return <Login />
+  }
 
   return (
     <div className="h-screen flex flex-col bg-white noise">
