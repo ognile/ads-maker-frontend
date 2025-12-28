@@ -37,8 +37,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Check for existing session on mount
+  // Check for existing session on mount OR magic link callback
   useEffect(() => {
+    // Check if this is a magic link callback (token in URL hash)
+    const hash = window.location.hash
+    if (hash && hash.includes('access_token=')) {
+      const params = new URLSearchParams(hash.substring(1))
+      const accessToken = params.get('access_token')
+      const refreshToken = params.get('refresh_token')
+
+      if (accessToken) {
+        // Store tokens
+        localStorage.setItem('auth_token', accessToken)
+        if (refreshToken) {
+          localStorage.setItem('refresh_token', refreshToken)
+        }
+
+        // Clear the hash from URL
+        window.history.replaceState(null, '', window.location.pathname)
+
+        // Verify and set user
+        checkAuth(accessToken)
+        return
+      }
+    }
+
+    // Normal flow: check stored token
     const storedToken = localStorage.getItem('auth_token')
     if (storedToken) {
       setToken(storedToken)
