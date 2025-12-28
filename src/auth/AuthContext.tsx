@@ -209,9 +209,39 @@ export function getAuthHeaders(): HeadersInit {
 // Preview token for testing/screenshots
 const PREVIEW_TOKEN = 'nuora_preview_2024'
 
-// Wrapper for authenticated fetch
+// Refresh the access token using refresh token
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = localStorage.getItem('refresh_token')
+  if (!refreshToken) return null
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      localStorage.setItem('auth_token', data.access_token)
+      if (data.refresh_token) {
+        localStorage.setItem('refresh_token', data.refresh_token)
+      }
+      return data.access_token
+    }
+  } catch (error) {
+    console.error('Token refresh failed:', error)
+  }
+
+  // Refresh failed, clear tokens
+  localStorage.removeItem('auth_token')
+  localStorage.removeItem('refresh_token')
+  return null
+}
+
+// Wrapper for authenticated fetch with automatic token refresh
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  const token = localStorage.getItem('auth_token')
+  let token = localStorage.getItem('auth_token')
 
   const headers = new Headers(options.headers)
   if (token) {
@@ -222,8 +252,22 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
     }
   }
 
-  return fetch(url, {
+  let response = await fetch(url, {
     ...options,
     headers,
   })
+
+  // If 401, try to refresh token and retry once
+  if (response.status === 401 && token) {
+    const newToken = await refreshAccessToken()
+    if (newToken) {
+      headers.set('Authorization', `Bearer ${newToken}`)
+      response = await fetch(url, {
+        ...options,
+        headers,
+      })
+    }
+  }
+
+  return response
 }
