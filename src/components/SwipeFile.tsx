@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { RefreshCw, Plus, X, Link, Trash2, ExternalLink, Tag, Copy, Check, Loader2, FileText, Upload } from 'lucide-react'
+import { RefreshCw, Plus, X, Link, Trash2, ExternalLink, Tag, Copy, Check, Loader2, FileText, Upload, Pencil, Save } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from './ui/toast'
+import ReactMarkdown from 'react-markdown'
 
 import { API_BASE, WS_BASE } from '../config'
 
@@ -68,6 +69,12 @@ export function SwipeFile() {
   // Detail modal state
   const [selectedSwipe, setSelectedSwipe] = useState<Swipe | null>(null)
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
+
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false)
+  const [editedTranscript, setEditedTranscript] = useState('')
+  const [editedName, setEditedName] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
 
   // WebSocket ref
   const wsRef = useRef<WebSocket | null>(null)
@@ -322,6 +329,51 @@ export function SwipeFile() {
       }
     } catch (error) {
       console.error('Failed to delete swipe:', error)
+    }
+  }
+
+  const handleStartEdit = () => {
+    if (selectedSwipe) {
+      setEditedName(selectedSwipe.name)
+      setEditedTranscript(selectedSwipe.transcript || '')
+      setIsEditing(true)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditing(false)
+    setEditedName('')
+    setEditedTranscript('')
+  }
+
+  const handleSaveEdit = async () => {
+    if (!selectedSwipe) return
+
+    setIsSaving(true)
+    try {
+      const res = await fetch(`${API_BASE}/swipes/${selectedSwipe.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editedName,
+          transcript: editedTranscript,
+        }),
+      })
+
+      if (res.ok) {
+        const updated = await res.json()
+        setSelectedSwipe(updated)
+        setSwipes(prev => prev.map(s => s.id === updated.id ? updated : s))
+        setIsEditing(false)
+        toast.success('Saved')
+      } else {
+        toast.error('Failed to save')
+      }
+    } catch (error) {
+      console.error('Failed to save swipe:', error)
+      toast.error('Failed to save')
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -726,7 +778,10 @@ export function SwipeFile() {
                 </span>
               </div>
               <button
-                onClick={() => setSelectedSwipe(null)}
+                onClick={() => {
+                  setSelectedSwipe(null)
+                  handleCancelEdit()
+                }}
                 className="text-[#A3A3A3] hover:text-black"
               >
                 <X className="w-4 h-4" />
@@ -741,6 +796,8 @@ export function SwipeFile() {
                     src={selectedSwipe.video_url}
                     poster={selectedSwipe.thumbnail_url}
                     controls
+                    playsInline
+                    preload="metadata"
                     className="w-full h-full object-contain"
                   />
                 </div>
@@ -755,7 +812,16 @@ export function SwipeFile() {
               ) : null}
 
               {/* Name */}
-              <h3 className="font-medium text-lg">{selectedSwipe.name}</h3>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={editedName}
+                  onChange={(e) => setEditedName(e.target.value)}
+                  className="w-full font-medium text-lg p-2 border border-[#E5E5E5] focus:outline-none focus:border-black"
+                />
+              ) : (
+                <h3 className="font-medium text-lg">{selectedSwipe.name}</h3>
+              )}
 
               {/* Source URL */}
               {selectedSwipe.source_url && (
@@ -782,22 +848,20 @@ export function SwipeFile() {
               )}
 
               {/* Transcript */}
-              {selectedSwipe.transcript && (
+              {(selectedSwipe.transcript || isEditing) && (
                 <div>
                   <span className="text-xs font-medium text-[#737373] uppercase">Full Transcript</span>
-                  <div className="mt-2 p-4 bg-[#FAFAFA] border border-[#E5E5E5] max-h-96 overflow-y-auto">
-                    <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed">
-                      {selectedSwipe.transcript}
-                    </pre>
-                  </div>
-                </div>
-              )}
-
-              {/* Visual Description */}
-              {selectedSwipe.visual_description && (
-                <div>
-                  <span className="text-xs font-medium text-[#737373] uppercase">Visual Description</span>
-                  <p className="mt-1 text-sm">{selectedSwipe.visual_description}</p>
+                  {isEditing ? (
+                    <textarea
+                      value={editedTranscript}
+                      onChange={(e) => setEditedTranscript(e.target.value)}
+                      className="mt-2 w-full h-96 p-4 bg-[#FAFAFA] border border-[#E5E5E5] text-sm font-mono focus:outline-none focus:border-black resize-none"
+                    />
+                  ) : (
+                    <div className="mt-2 p-4 bg-[#FAFAFA] border border-[#E5E5E5] max-h-96 overflow-y-auto prose prose-sm max-w-none">
+                      <ReactMarkdown>{selectedSwipe.transcript || ''}</ReactMarkdown>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -809,22 +873,61 @@ export function SwipeFile() {
 
               {/* Actions */}
               <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => copyReferenceCode(selectedSwipe.reference_code)}
-                >
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copy Code
-                </Button>
-                <Button
-                  variant="outline"
-                  className="text-red-600 hover:text-red-700 hover:border-red-300"
-                  onClick={() => handleDelete(selectedSwipe.id)}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
-                </Button>
+                {isEditing ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={handleCancelEdit}
+                      disabled={isSaving}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      onClick={handleSaveEdit}
+                      disabled={isSaving}
+                    >
+                      {isSaving ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4 mr-2" />
+                          Save
+                        </>
+                      )}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={handleStartEdit}
+                    >
+                      <Pencil className="w-4 h-4 mr-2" />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => copyReferenceCode(selectedSwipe.reference_code)}
+                    >
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copy Code
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="text-red-600 hover:text-red-700 hover:border-red-300"
+                      onClick={() => handleDelete(selectedSwipe.id)}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </div>
