@@ -9,6 +9,7 @@ interface ProductsProps {
 }
 
 import { API_BASE } from '../config'
+import { authFetch } from '../auth'
 
 export function Products({ products, onRefresh }: ProductsProps) {
   const [modalOpen, setModalOpen] = useState(false)
@@ -41,7 +42,7 @@ export function Products({ products, onRefresh }: ProductsProps) {
 
   const fetchProductSources = async (productId: string) => {
     try {
-      const res = await fetch(`${API_BASE}/data-sources/product/${productId}`)
+      const res = await authFetch(`${API_BASE}/data-sources/product/${productId}`)
       if (res.ok) {
         const sources = await res.json()
         setProductSources(prev => ({ ...prev, [productId]: sources }))
@@ -78,7 +79,7 @@ export function Products({ products, onRefresh }: ProductsProps) {
         ? `${API_BASE}/products/${editingProduct.id}`
         : `${API_BASE}/products`
 
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method: editingProduct ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -99,7 +100,7 @@ export function Products({ products, onRefresh }: ProductsProps) {
   }
 
   const handleDelete = async (id: string) => {
-    const res = await fetch(`${API_BASE}/products/${id}`, { method: 'DELETE' })
+    const res = await authFetch(`${API_BASE}/products/${id}`, { method: 'DELETE' })
     if (res.ok) {
       onRefresh()
     }
@@ -142,7 +143,7 @@ export function Products({ products, onRefresh }: ProductsProps) {
 
     setIsSubmitting(true)
     try {
-      const res = await fetch(`${API_BASE}/data-sources`, {
+      const res = await authFetch(`${API_BASE}/data-sources`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -163,7 +164,7 @@ export function Products({ products, onRefresh }: ProductsProps) {
   }
 
   const handleDeleteSource = async (sourceId: string, productId: string) => {
-    const res = await fetch(`${API_BASE}/data-sources/${sourceId}`, { method: 'DELETE' })
+    const res = await authFetch(`${API_BASE}/data-sources/${sourceId}`, { method: 'DELETE' })
     if (res.ok) {
       fetchProductSources(productId)
     }

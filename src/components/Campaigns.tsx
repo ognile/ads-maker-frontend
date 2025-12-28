@@ -3,6 +3,7 @@ import { Search, ChevronDown, ChevronRight, RefreshCw, Loader2, Copy } from 'luc
 import { Button } from './ui/button'
 
 import { API_BASE } from '../config'
+import { authFetch } from '../auth'
 
 interface Campaign {
   id: string
@@ -50,7 +51,7 @@ export function Campaigns() {
     setIsLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${API_BASE}/fb/campaigns${forceRefresh ? '?refresh=true' : ''}`)
+      const res = await authFetch(`${API_BASE}/fb/campaigns${forceRefresh ? '?refresh=true' : ''}`)
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.detail || 'Failed to fetch campaigns')
@@ -70,7 +71,7 @@ export function Campaigns() {
     setLoadingAdsets(prev => new Set(prev).add(campaignId))
     setAdsetErrors(prev => ({ ...prev, [campaignId]: '' }))
     try {
-      const res = await fetch(`${API_BASE}/fb/adsets?campaign_id=${campaignId}${forceRefresh ? '&refresh=true' : ''}`)
+      const res = await authFetch(`${API_BASE}/fb/adsets?campaign_id=${campaignId}${forceRefresh ? '&refresh=true' : ''}`)
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         // Show actual error - don't hide it
@@ -109,7 +110,7 @@ export function Campaigns() {
     if (!duplicateModal || !newAdsetName.trim()) return
     setIsDuplicating(true)
     try {
-      const res = await fetch(`${API_BASE}/fb/adsets/duplicate`, {
+      const res = await authFetch(`${API_BASE}/fb/adsets/duplicate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

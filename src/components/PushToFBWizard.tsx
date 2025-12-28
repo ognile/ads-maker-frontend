@@ -4,6 +4,7 @@ import { Button } from './ui/button'
 import type { AdConcept, Product } from '../App'
 
 import { API_BASE } from '../config'
+import { authFetch } from '../auth'
 
 interface FBCampaign {
   id: string
@@ -77,7 +78,7 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
   const fetchSuggestedNames = async () => {
     try {
       const lp = product?.landing_page_url || ''
-      const res = await fetch(`${API_BASE}/fb/concept/${concept.id}/suggested-names?link_url=${encodeURIComponent(lp)}`)
+      const res = await authFetch(`${API_BASE}/fb/concept/${concept.id}/suggested-names?link_url=${encodeURIComponent(lp)}`)
       if (res.ok) {
         const data = await res.json()
         setSuggestedAdsetName(data.adset_name || '')
@@ -122,7 +123,7 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
   const fetchCampaigns = async () => {
     setIsLoadingCampaigns(true)
     try {
-      const res = await fetch(`${API_BASE}/fb/campaigns`)
+      const res = await authFetch(`${API_BASE}/fb/campaigns`)
       if (!res.ok) throw new Error('Failed to fetch campaigns')
       const data = await res.json()
       setCampaigns(data.campaigns || [])
@@ -137,7 +138,7 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
     setIsLoadingAdsets(true)
     setAdsetError(null)
     try {
-      const res = await fetch(`${API_BASE}/fb/adsets?campaign_id=${campaignId}`)
+      const res = await authFetch(`${API_BASE}/fb/adsets?campaign_id=${campaignId}`)
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         const isRateLimit = data.detail?.includes('rate') || data.detail?.includes('limit') || data.detail?.includes('Too Many')
@@ -157,7 +158,7 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
     if (!newCampaignName.trim()) return
     setIsCreatingCampaign(true)
     try {
-      const res = await fetch(`${API_BASE}/fb/campaigns`, {
+      const res = await authFetch(`${API_BASE}/fb/campaigns`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newCampaignName.trim() }),
@@ -184,7 +185,7 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
     if (!newAdsetName.trim() || !selectedCampaign) return
     setIsCreatingAdset(true)
     try {
-      const res = await fetch(`${API_BASE}/fb/adsets`, {
+      const res = await authFetch(`${API_BASE}/fb/adsets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -216,7 +217,7 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
     if (!duplicateSource || !newAdsetName.trim()) return
     setIsCreatingAdset(true)
     try {
-      const res = await fetch(`${API_BASE}/fb/adsets/duplicate`, {
+      const res = await authFetch(`${API_BASE}/fb/adsets/duplicate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -248,7 +249,7 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
     setIsPushing(true)
     setPushError(null)
     try {
-      const res = await fetch(`${API_BASE}/fb/push-concept`, {
+      const res = await authFetch(`${API_BASE}/fb/push-concept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

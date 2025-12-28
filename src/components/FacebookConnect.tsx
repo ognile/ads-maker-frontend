@@ -5,6 +5,7 @@ import { Button } from './ui/button'
 import { useToast } from './ui/toast'
 
 import { API_BASE } from '../config'
+import { authFetch } from '../auth'
 
 interface FBUser {
   id: string
@@ -34,25 +35,25 @@ interface ConnectionStatus {
 }
 
 async function getAuthStatus(): Promise<ConnectionStatus> {
-  const res = await fetch(`${API_BASE}/fb/auth/status`)
+  const res = await authFetch(`${API_BASE}/fb/auth/status`)
   if (!res.ok) throw new Error('Failed to get auth status')
   return res.json()
 }
 
 async function getAdAccounts(): Promise<{ accounts: FBAdAccount[]; selected: string | null }> {
-  const res = await fetch(`${API_BASE}/fb/ad-accounts`)
+  const res = await authFetch(`${API_BASE}/fb/ad-accounts`)
   if (!res.ok) throw new Error('Failed to get ad accounts')
   return res.json()
 }
 
 async function getPages(): Promise<{ pages: FBPage[]; selected: string | null }> {
-  const res = await fetch(`${API_BASE}/fb/pages`)
+  const res = await authFetch(`${API_BASE}/fb/pages`)
   if (!res.ok) throw new Error('Failed to get pages')
   return res.json()
 }
 
 async function selectAccount(accountId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/fb/select-account`, {
+  const res = await authFetch(`${API_BASE}/fb/select-account`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ account_id: accountId }),
@@ -61,7 +62,7 @@ async function selectAccount(accountId: string): Promise<void> {
 }
 
 async function selectPage(pageId: string, pageToken?: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/fb/select-page`, {
+  const res = await authFetch(`${API_BASE}/fb/select-page`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ page_id: pageId, page_token: pageToken }),
@@ -70,12 +71,12 @@ async function selectPage(pageId: string, pageToken?: string): Promise<void> {
 }
 
 async function disconnect(): Promise<void> {
-  const res = await fetch(`${API_BASE}/fb/auth/disconnect`, { method: 'POST' })
+  const res = await authFetch(`${API_BASE}/fb/auth/disconnect`, { method: 'POST' })
   if (!res.ok) throw new Error('Failed to disconnect')
 }
 
 async function setToken(token: string): Promise<{ user: FBUser }> {
-  const res = await fetch(`${API_BASE}/fb/auth/set-token`, {
+  const res = await authFetch(`${API_BASE}/fb/auth/set-token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token }),

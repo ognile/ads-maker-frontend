@@ -32,6 +32,7 @@ interface PerformanceGoals {
 }
 
 import { API_BASE } from '../config'
+import { authFetch } from '../auth'
 
 const TASK_LABELS: Record<string, { label: string; description: string; icon: typeof Bot }> = {
   orchestrator: {
@@ -75,10 +76,10 @@ export function Settings() {
   const fetchSettings = async () => {
     try {
       const [settingsRes, modelsRes, goalsRes, principlesRes] = await Promise.all([
-        fetch(`${API_BASE}/settings`),
-        fetch(`${API_BASE}/settings/models`),
-        fetch(`${API_BASE}/settings/goals`),
-        fetch(`${API_BASE}/settings/copywriting-principles`),
+        authFetch(`${API_BASE}/settings`),
+        authFetch(`${API_BASE}/settings/models`),
+        authFetch(`${API_BASE}/settings/goals`),
+        authFetch(`${API_BASE}/settings/copywriting-principles`),
       ])
 
       if (settingsRes.ok) {
@@ -111,7 +112,7 @@ export function Settings() {
   const savePrinciples = async () => {
     setSavingPrinciples(true)
     try {
-      const res = await fetch(`${API_BASE}/settings/copywriting-principles`, {
+      const res = await authFetch(`${API_BASE}/settings/copywriting-principles`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ principles: copywritingPrinciples }),
@@ -129,7 +130,7 @@ export function Settings() {
   const updateGoals = async (updates: Partial<PerformanceGoals>) => {
     setSavingGoals(true)
     try {
-      const res = await fetch(`${API_BASE}/settings/goals`, {
+      const res = await authFetch(`${API_BASE}/settings/goals`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
@@ -152,7 +153,7 @@ export function Settings() {
   const updateSetting = async (key: keyof SettingsData, value: boolean | string) => {
     setIsSaving(true)
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
+      const res = await authFetch(`${API_BASE}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [key]: value }),
@@ -171,7 +172,7 @@ export function Settings() {
   const updateModel = async (task: string, modelId: string) => {
     setSavingModel(task)
     try {
-      const res = await fetch(`${API_BASE}/settings/models`, {
+      const res = await authFetch(`${API_BASE}/settings/models`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ task, model_id: modelId }),

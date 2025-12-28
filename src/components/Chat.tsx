@@ -16,6 +16,7 @@ import {
 import { Button } from './ui/button'
 import { ConfirmationCard } from './ConfirmationCard'
 import { API_BASE } from '../config'
+import { authFetch } from '../auth'
 
 interface Conversation {
   id: string
@@ -52,13 +53,13 @@ interface Attachment {
 }
 
 async function fetchConversations(): Promise<Conversation[]> {
-  const res = await fetch(`${API_BASE}/chat/conversations`)
+  const res = await authFetch(`${API_BASE}/chat/conversations`)
   if (!res.ok) throw new Error('Failed to fetch conversations')
   return res.json()
 }
 
 async function createConversation(title?: string): Promise<Conversation> {
-  const res = await fetch(`${API_BASE}/chat/conversations`, {
+  const res = await authFetch(`${API_BASE}/chat/conversations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
@@ -68,20 +69,20 @@ async function createConversation(title?: string): Promise<Conversation> {
 }
 
 async function deleteConversation(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/chat/conversations/${id}`, {
+  const res = await authFetch(`${API_BASE}/chat/conversations/${id}`, {
     method: 'DELETE',
   })
   if (!res.ok) throw new Error('Failed to delete conversation')
 }
 
 async function fetchMessages(conversationId: string): Promise<Message[]> {
-  const res = await fetch(`${API_BASE}/chat/conversations/${conversationId}/messages`)
+  const res = await authFetch(`${API_BASE}/chat/conversations/${conversationId}/messages`)
   if (!res.ok) throw new Error('Failed to fetch messages')
   return res.json()
 }
 
 async function fetchConfirmations(conversationId: string): Promise<Confirmation[]> {
-  const res = await fetch(`${API_BASE}/chat/conversations/${conversationId}/confirmations`)
+  const res = await authFetch(`${API_BASE}/chat/conversations/${conversationId}/confirmations`)
   if (!res.ok) throw new Error('Failed to fetch confirmations')
   return res.json()
 }
@@ -90,7 +91,7 @@ async function uploadFile(conversationId: string, file: File): Promise<Attachmen
   const formData = new FormData()
   formData.append('file', file)
 
-  const res = await fetch(`${API_BASE}/chat/conversations/${conversationId}/upload`, {
+  const res = await authFetch(`${API_BASE}/chat/conversations/${conversationId}/upload`, {
     method: 'POST',
     body: formData,
   })
@@ -200,7 +201,7 @@ export function Chat() {
     setStreamContent('')
 
     try {
-      const response = await fetch(`${API_BASE}/chat/conversations/${selectedConversationId}/messages`, {
+      const response = await authFetch(`${API_BASE}/chat/conversations/${selectedConversationId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -435,14 +436,14 @@ export function Chat() {
                       key={conf.id}
                       confirmation={conf}
                       onConfirm={async () => {
-                        await fetch(`${API_BASE}/chat/confirmations/${conf.id}/confirm`, {
+                        await authFetch(`${API_BASE}/chat/confirmations/${conf.id}/confirm`, {
                           method: 'POST',
                         })
                         queryClient.invalidateQueries({ queryKey: ['confirmations', selectedConversationId] })
                         queryClient.invalidateQueries({ queryKey: ['messages', selectedConversationId] })
                       }}
                       onCancel={async () => {
-                        await fetch(`${API_BASE}/chat/confirmations/${conf.id}/cancel`, {
+                        await authFetch(`${API_BASE}/chat/confirmations/${conf.id}/cancel`, {
                           method: 'POST',
                         })
                         queryClient.invalidateQueries({ queryKey: ['confirmations', selectedConversationId] })

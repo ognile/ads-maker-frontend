@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react'
 import { RefreshCw, Plus, ThumbsUp, ThumbsDown, Trash2, Edit2, X, Video, Image as ImageIcon, MessageSquare, Sparkles, Play, ChevronDown, ChevronUp, DollarSign, Target, TrendingUp, Loader2 } from 'lucide-react'
 import { API_BASE } from '../config'
+import { authFetch } from '../auth'
 import { getCachedAds, type CachedAd } from '../utils/analyticsCache'
 
 interface AdMetric {
@@ -120,7 +121,7 @@ export function Learnings() {
       if (categoryFilter) params.set('category', categoryFilter)
       if (appliesToFilter) params.set('applies_to', appliesToFilter)
 
-      const res = await fetch(`${API_BASE}/analysis/learnings/v2?${params}`)
+      const res = await authFetch(`${API_BASE}/analysis/learnings/v2?${params}`)
       if (res.ok) {
         const data: LearningsResponse = await res.json()
         setLearnings(data.learnings)
@@ -161,7 +162,7 @@ export function Learnings() {
     setIsLoadingAds(true)
     try {
       // Fetch last 60 days of ads
-      const res = await fetch(`${API_BASE}/fb/ads/with-insights?date_preset=last_30d&limit=200`)
+      const res = await authFetch(`${API_BASE}/fb/ads/with-insights?date_preset=last_30d&limit=200`)
       if (res.ok) {
         const data = await res.json()
         const ads: AdForSelection[] = data.map((ad: any) => ({
@@ -206,7 +207,7 @@ export function Learnings() {
     setAnalysisResult(null)
 
     try {
-      const res = await fetch(`${API_BASE}/analysis/analyze-ads`, {
+      const res = await authFetch(`${API_BASE}/analysis/analyze-ads`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ad_ids: adIds }),
@@ -284,13 +285,13 @@ export function Learnings() {
       }
 
       if (editingLearning) {
-        await fetch(`${API_BASE}/analysis/learnings/${editingLearning.id}`, {
+        await authFetch(`${API_BASE}/analysis/learnings/${editingLearning.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
       } else {
-        await fetch(`${API_BASE}/analysis/learnings/v2`, {
+        await authFetch(`${API_BASE}/analysis/learnings/v2`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -310,7 +311,7 @@ export function Learnings() {
     if (!confirm('Delete this learning?')) return
 
     try {
-      await fetch(`${API_BASE}/analysis/learnings/${id}/hard`, { method: 'DELETE' })
+      await authFetch(`${API_BASE}/analysis/learnings/${id}/hard`, { method: 'DELETE' })
       fetchLearnings()
     } catch (error) {
       console.error('Failed to delete learning:', error)

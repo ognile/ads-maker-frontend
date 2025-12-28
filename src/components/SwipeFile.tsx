@@ -5,6 +5,7 @@ import { useToast } from './ui/toast'
 import ReactMarkdown from 'react-markdown'
 
 import { API_BASE, WS_BASE } from '../config'
+import { authFetch } from '../auth'
 
 interface Swipe {
   id: string
@@ -170,7 +171,7 @@ export function SwipeFile() {
       }
       params.set('limit', '100')
 
-      const res = await fetch(`${API_BASE}/swipes?${params}`)
+      const res = await authFetch(`${API_BASE}/swipes?${params}`)
       if (res.ok) {
         const data = await res.json()
         setSwipes(data.swipes || [])
@@ -184,7 +185,7 @@ export function SwipeFile() {
 
   const fetchJobs = async () => {
     try {
-      const res = await fetch(`${API_BASE}/swipes/jobs?limit=20`)
+      const res = await authFetch(`${API_BASE}/swipes/jobs?limit=20`)
       if (res.ok) {
         const data = await res.json()
         // Only keep active jobs
@@ -201,7 +202,7 @@ export function SwipeFile() {
     setIsSubmitting(true)
 
     try {
-      const res = await fetch(`${API_BASE}/swipes/jobs`, {
+      const res = await authFetch(`${API_BASE}/swipes/jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -243,7 +244,7 @@ export function SwipeFile() {
     setIsSubmitting(true)
 
     try {
-      const res = await fetch(`${API_BASE}/swipes/jobs`, {
+      const res = await authFetch(`${API_BASE}/swipes/jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -288,7 +289,7 @@ export function SwipeFile() {
       const formData = new FormData()
       formData.append('file', file)
 
-      const res = await fetch(`${API_BASE}/swipes/jobs/upload`, {
+      const res = await authFetch(`${API_BASE}/swipes/jobs/upload`, {
         method: 'POST',
         body: formData,
       })
@@ -321,7 +322,7 @@ export function SwipeFile() {
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`${API_BASE}/swipes/${id}`, { method: 'DELETE' })
+      const res = await authFetch(`${API_BASE}/swipes/${id}`, { method: 'DELETE' })
       if (res.ok) {
         setSelectedSwipe(null)
         fetchSwipes()
@@ -351,7 +352,7 @@ export function SwipeFile() {
 
     setIsSaving(true)
     try {
-      const res = await fetch(`${API_BASE}/swipes/${selectedSwipe.id}`, {
+      const res = await authFetch(`${API_BASE}/swipes/${selectedSwipe.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

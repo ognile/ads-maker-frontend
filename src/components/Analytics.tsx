@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { authFetch } from '../auth'
 import { RefreshCw, Loader2, TrendingUp, TrendingDown, Bot, User, Settings, X, GripVertical } from 'lucide-react'
 import { Button } from './ui/button'
 import {
@@ -325,8 +326,8 @@ export function Analytics() {
 
     try {
       const [insightsRes, adsRes] = await Promise.all([
-        fetch(`${API_BASE}/fb/account/insights?date_preset=${datePreset}`),
-        fetch(`${API_BASE}/fb/ads/with-insights?date_preset=${datePreset}&limit=100`),
+        authFetch(`${API_BASE}/fb/account/insights?date_preset=${datePreset}`),
+        authFetch(`${API_BASE}/fb/ads/with-insights?date_preset=${datePreset}&limit=100`),
       ])
 
       if (!insightsRes.ok) {

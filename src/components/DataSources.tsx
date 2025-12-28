@@ -9,6 +9,7 @@ interface DataSourcesProps {
 }
 
 import { API_BASE } from '../config'
+import { authFetch } from '../auth'
 
 type AddMode = 'file' | 'text'
 
@@ -28,7 +29,7 @@ export function DataSources({ sources, onRefresh }: DataSourcesProps) {
 
     setIsSubmitting(true)
     try {
-      const res = await fetch(`${API_BASE}/data-sources`, {
+      const res = await authFetch(`${API_BASE}/data-sources`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -51,7 +52,7 @@ export function DataSources({ sources, onRefresh }: DataSourcesProps) {
   }
 
   const handleDelete = async (id: string) => {
-    const res = await fetch(`${API_BASE}/data-sources/${id}`, { method: 'DELETE' })
+    const res = await authFetch(`${API_BASE}/data-sources/${id}`, { method: 'DELETE' })
     if (res.ok) {
       onRefresh()
     }
