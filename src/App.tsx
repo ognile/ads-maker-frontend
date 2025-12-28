@@ -59,6 +59,7 @@ export interface AdConcept {
   revision_changelog?: ChangelogEntry[]
   headlines: string[]
   images: string[]
+  image_prompts?: string[]
   principle_check: {
     passed: boolean
     score?: number

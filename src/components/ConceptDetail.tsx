@@ -286,19 +286,25 @@ export function ConceptDetail({
         {concept.images && concept.images.length > 0 && (
           <div className="space-y-2">
             <h3 className="text-xs font-medium text-[#737373] uppercase tracking-wide">Images</h3>
-            <div className="flex gap-3">
+            <div className="flex gap-4">
               {concept.images.map((img, i) => (
-                <button
-                  key={i}
-                  onClick={() => setEnlargedImage(img)}
-                  className="border border-[#E5E5E5] hover:border-[#D4D4D4] transition-colors"
-                >
-                  <img
-                    src={img.startsWith('data:') || img.startsWith('http') ? img : `data:image/png;base64,${img}`}
-                    alt={`Generated ${i + 1}`}
-                    className="w-32 h-32 object-cover"
-                  />
-                </button>
+                <div key={i} className="space-y-1">
+                  <button
+                    onClick={() => setEnlargedImage(img)}
+                    className="border border-[#E5E5E5] hover:border-[#D4D4D4] transition-colors"
+                  >
+                    <img
+                      src={img.startsWith('data:') || img.startsWith('http') ? img : `data:image/png;base64,${img}`}
+                      alt={`Generated ${i + 1}`}
+                      className="w-32 h-32 object-cover"
+                    />
+                  </button>
+                  {concept.image_prompts?.[i] && (
+                    <p className="text-xs text-[#A3A3A3] max-w-[128px] line-clamp-3" title={concept.image_prompts[i]}>
+                      {concept.image_prompts[i]}
+                    </p>
+                  )}
+                </div>
               ))}
             </div>
           </div>
