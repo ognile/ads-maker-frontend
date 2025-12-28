@@ -1,14 +1,14 @@
-import { useState, useEffect, useRef } from 'react'
-import { RefreshCw, Plus, X, Link, Trash2, ExternalLink, Tag, Copy, Check, Loader2 } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { RefreshCw, Plus, X, Link, Trash2, ExternalLink, Tag, Copy, Check, Loader2, FileText, Upload } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from './ui/toast'
 
-import { API_BASE } from '../config'
+import { API_BASE, WS_BASE } from '../config'
 
 interface Swipe {
   id: string
   name: string
-  swipe_type: 'ad_text' | 'ad_image' | 'ad_video' | 'landing_page'
+  swipe_type: 'ad_text' | 'ad_image' | 'ad_video' | 'landing_page' | 'raw_text'
   reference_code: string
   transcript?: string
   visual_description?: string
@@ -26,20 +26,28 @@ interface Swipe {
   }
 }
 
-interface ProcessingProgress {
-  percent: number
-  message: string
+interface Job {
+  id: string
+  status: 'queued' | 'processing' | 'done' | 'failed'
+  progress: number
+  progress_message: string
+  input_type: string
+  input_data: {
+    url?: string
+    text?: string
+    filename?: string
+  }
+  result_swipe_id?: string
+  error_message?: string
+  created_at: string
 }
 
-// Helper to get status from swipe (from metadata)
-const getSwipeStatus = (swipe: Swipe): 'processing' | 'ready' | 'failed' => {
-  return swipe.metadata?.status || 'ready'
-}
-
-type SwipeTypeFilter = 'all' | 'ad_text' | 'ad_image' | 'ad_video' | 'landing_page'
+type SwipeTypeFilter = 'all' | 'ad_text' | 'ad_image' | 'ad_video' | 'landing_page' | 'raw_text'
+type AddMode = 'url' | 'text' | 'file'
 
 export function SwipeFile() {
   const [swipes, setSwipes] = useState<Swipe[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [typeFilter, setTypeFilter] = useState<SwipeTypeFilter>('all')
   const [searchQuery, setSearchQuery] = useState('')
@@ -47,123 +55,103 @@ export function SwipeFile() {
 
   // Add modal state
   const [addModalOpen, setAddModalOpen] = useState(false)
+  const [addMode, setAddMode] = useState<AddMode>('url')
   const [urlInput, setUrlInput] = useState('')
+  const [textInput, setTextInput] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Save form state (for tags/category in add modal)
   const [saveTags, setSaveTags] = useState<string[]>([])
-  const [saveCategory, setSaveCategory] = useState<string>('')
   const [tagInput, setTagInput] = useState('')
 
   // Detail modal state
   const [selectedSwipe, setSelectedSwipe] = useState<Swipe | null>(null)
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
 
-  // Progress tracking for processing swipes
-  const [progressMap, setProgressMap] = useState<Record<string, ProcessingProgress>>({})
+  // WebSocket ref
+  const wsRef = useRef<WebSocket | null>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Polling for processing swipes
-  const prevProcessingIdsRef = useRef<Set<string>>(new Set())
+  // Connect WebSocket
+  const connectWebSocket = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return
+
+    const ws = new WebSocket(`${WS_BASE}/swipes/ws`)
+
+    ws.onopen = () => {
+      console.log('WebSocket connected')
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+
+        if (data.type === 'initial_state') {
+          setJobs(data.jobs.filter((j: Job) => j.status === 'queued' || j.status === 'processing'))
+        } else if (data.type === 'job_update') {
+          // Update job progress
+          setJobs(prev => {
+            const exists = prev.find(j => j.id === data.job_id)
+            if (exists) {
+              return prev.map(j =>
+                j.id === data.job_id
+                  ? { ...j, progress: data.progress, progress_message: data.message, status: data.status }
+                  : j
+              )
+            }
+            return prev
+          })
+
+          // If job completed, refresh swipes list and show toast
+          if (data.status === 'done') {
+            fetchSwipes()
+            toast.success(`Swipe ready!`)
+            // Remove from jobs list after delay
+            setTimeout(() => {
+              setJobs(prev => prev.filter(j => j.id !== data.job_id))
+            }, 2000)
+          } else if (data.status === 'failed') {
+            toast.error(`Processing failed: ${data.message}`)
+            setTimeout(() => {
+              setJobs(prev => prev.filter(j => j.id !== data.job_id))
+            }, 5000)
+          }
+        } else if (data.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }))
+        }
+      } catch (e) {
+        console.error('WebSocket message error:', e)
+      }
+    }
+
+    ws.onclose = () => {
+      console.log('WebSocket disconnected, reconnecting...')
+      reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000)
+    }
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error)
+    }
+
+    wsRef.current = ws
+  }, [toast])
+
+  // Cleanup WebSocket on unmount
+  useEffect(() => {
+    connectWebSocket()
+
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
+      wsRef.current?.close()
+    }
+  }, [connectWebSocket])
 
   useEffect(() => {
     fetchSwipes()
+    fetchJobs()
   }, [typeFilter])
-
-  // Fetch status for a single processing swipe
-  const fetchSwipeStatus = async (swipeId: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/swipes/${swipeId}/status`)
-      if (res.ok) {
-        const data = await res.json()
-        return data
-      }
-    } catch (error) {
-      console.error(`Failed to fetch status for ${swipeId}:`, error)
-    }
-    return null
-  }
-
-  // Track processing swipe IDs in a ref to avoid stale closure
-  const processingIdsRef = useRef<string[]>([])
-
-  // Update processing IDs ref when swipes change
-  useEffect(() => {
-    const processingSwipes = swipes.filter(s => getSwipeStatus(s) === 'processing')
-    const currentIds = new Set(processingSwipes.map(s => s.id))
-
-    // Check if any previously processing swipes are now ready
-    prevProcessingIdsRef.current.forEach(id => {
-      if (!currentIds.has(id)) {
-        const swipe = swipes.find(s => s.id === id)
-        if (swipe) {
-          const status = getSwipeStatus(swipe)
-          if (status === 'ready') {
-            toast.success(`${swipe.reference_code} ready`, {
-              label: 'View',
-              onClick: () => setSelectedSwipe(swipe)
-            })
-            // Clean up progress entry
-            setProgressMap(prev => {
-              const next = { ...prev }
-              delete next[id]
-              return next
-            })
-          } else if (status === 'failed') {
-            toast.error(`${swipe.reference_code} failed to process`)
-            setProgressMap(prev => {
-              const next = { ...prev }
-              delete next[id]
-              return next
-            })
-          }
-        }
-      }
-    })
-
-    prevProcessingIdsRef.current = currentIds
-    processingIdsRef.current = processingSwipes.map(s => s.id)
-  }, [swipes])
-
-  // Separate effect for polling to avoid recreating interval
-  useEffect(() => {
-    const pollStatus = async () => {
-      const ids = processingIdsRef.current
-      if (ids.length === 0) return
-
-      let anyComplete = false
-
-      for (const id of ids) {
-        const status = await fetchSwipeStatus(id)
-        if (status) {
-          if (status.status === 'processing') {
-            // Update progress
-            setProgressMap(prev => ({
-              ...prev,
-              [id]: {
-                percent: status.percent || 0,
-                message: status.progress || 'Processing...'
-              }
-            }))
-          } else {
-            // Status changed - refresh full list
-            anyComplete = true
-          }
-        }
-      }
-
-      if (anyComplete) {
-        fetchSwipes()
-      }
-    }
-
-    // Start polling immediately
-    pollStatus()
-
-    // Then poll every 1.5s
-    const interval = setInterval(pollStatus, 1500)
-
-    return () => clearInterval(interval)
-  }, []) // Empty deps - runs once, uses refs for current data
 
   const fetchSwipes = async () => {
     setIsLoading(true)
@@ -186,41 +174,138 @@ export function SwipeFile() {
     }
   }
 
-  // Async queue flow - instant feedback
+  const fetchJobs = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/swipes/jobs?limit=20`)
+      if (res.ok) {
+        const data = await res.json()
+        // Only keep active jobs
+        setJobs(data.jobs.filter((j: Job) => j.status === 'queued' || j.status === 'processing'))
+      }
+    } catch (error) {
+      console.error('Failed to fetch jobs:', error)
+    }
+  }
+
   const handleAddUrl = async () => {
     if (!urlInput.trim()) return
 
     setIsSubmitting(true)
 
     try {
-      const res = await fetch(`${API_BASE}/swipes/queue`, {
+      const res = await fetch(`${API_BASE}/swipes/jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          input_type: 'url',
           url: urlInput.trim(),
-          tags: saveTags.length > 0 ? saveTags : undefined,
-          category: saveCategory || undefined,
         }),
       })
 
       const data = await res.json()
 
       if (data.success) {
-        // Close modal immediately
         setAddModalOpen(false)
         resetAddForm()
-
-        // Show success toast
-        toast.success(`Added ${data.reference_code} - processing in background`)
-
-        // Refresh list to show processing item
-        fetchSwipes()
+        toast.success('Processing started...')
+        // Add to local jobs for immediate feedback
+        setJobs(prev => [{
+          id: data.job_id,
+          status: 'queued',
+          progress: 0,
+          progress_message: 'Queued...',
+          input_type: 'url',
+          input_data: { url: urlInput.trim() },
+          created_at: new Date().toISOString()
+        }, ...prev])
       } else {
         toast.error(data.detail || 'Failed to queue URL')
       }
     } catch (error) {
       console.error('Failed to queue URL:', error)
-      toast.error('Failed to add URL. Check the URL and try again.')
+      toast.error('Failed to add URL')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleAddText = async () => {
+    if (!textInput.trim()) return
+
+    setIsSubmitting(true)
+
+    try {
+      const res = await fetch(`${API_BASE}/swipes/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input_type: 'text',
+          text: textInput.trim(),
+        }),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        setAddModalOpen(false)
+        resetAddForm()
+        toast.success('Processing text...')
+        setJobs(prev => [{
+          id: data.job_id,
+          status: 'queued',
+          progress: 0,
+          progress_message: 'Queued...',
+          input_type: 'text',
+          input_data: { text: textInput.trim().substring(0, 50) + '...' },
+          created_at: new Date().toISOString()
+        }, ...prev])
+      } else {
+        toast.error(data.detail || 'Failed to queue text')
+      }
+    } catch (error) {
+      console.error('Failed to queue text:', error)
+      toast.error('Failed to add text')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsSubmitting(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch(`${API_BASE}/swipes/jobs/upload`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        setAddModalOpen(false)
+        resetAddForm()
+        toast.success(`Processing ${file.name}...`)
+        setJobs(prev => [{
+          id: data.job_id,
+          status: 'queued',
+          progress: 0,
+          progress_message: 'Queued...',
+          input_type: 'file',
+          input_data: { filename: file.name },
+          created_at: new Date().toISOString()
+        }, ...prev])
+      } else {
+        toast.error(data.detail || 'Failed to upload file')
+      }
+    } catch (error) {
+      console.error('Failed to upload file:', error)
+      toast.error('Failed to upload file')
     } finally {
       setIsSubmitting(false)
     }
@@ -232,6 +317,7 @@ export function SwipeFile() {
       if (res.ok) {
         setSelectedSwipe(null)
         fetchSwipes()
+        toast.success('Deleted')
       }
     } catch (error) {
       console.error('Failed to delete swipe:', error)
@@ -240,9 +326,10 @@ export function SwipeFile() {
 
   const resetAddForm = () => {
     setUrlInput('')
+    setTextInput('')
     setSaveTags([])
-    setSaveCategory('')
     setTagInput('')
+    setAddMode('url')
   }
 
   const addTag = () => {
@@ -269,6 +356,7 @@ export function SwipeFile() {
       case 'ad_image': return 'Image Ad'
       case 'ad_video': return 'Video Ad'
       case 'landing_page': return 'Landing Page'
+      case 'raw_text': return 'Text'
       default: return type
     }
   }
@@ -279,6 +367,7 @@ export function SwipeFile() {
       case 'ad_image': return 'bg-green-100 text-green-800'
       case 'ad_video': return 'bg-purple-100 text-purple-800'
       case 'landing_page': return 'bg-orange-100 text-orange-800'
+      case 'raw_text': return 'bg-gray-100 text-gray-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
@@ -303,14 +392,14 @@ export function SwipeFile() {
           <h2 className="text-lg font-semibold">Swipe File</h2>
           <div className="flex gap-2">
             <button
-              onClick={fetchSwipes}
+              onClick={() => { fetchSwipes(); fetchJobs() }}
               className="p-2 text-[#A3A3A3] hover:text-black transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
             <Button size="sm" onClick={() => setAddModalOpen(true)}>
               <Plus className="w-4 h-4 mr-1" />
-              Add from URL
+              Add
             </Button>
           </div>
         </div>
@@ -318,7 +407,7 @@ export function SwipeFile() {
         {/* Filters */}
         <div className="flex gap-4 items-center">
           <div className="flex gap-1">
-            {(['all', 'ad_text', 'ad_image', 'ad_video', 'landing_page'] as const).map(type => (
+            {(['all', 'ad_text', 'ad_image', 'ad_video', 'landing_page', 'raw_text'] as const).map(type => (
               <button
                 key={type}
                 onClick={() => setTypeFilter(type)}
@@ -347,114 +436,106 @@ export function SwipeFile() {
           Reference swipes in chat: "create ad like SW001" or "use the hook style from SW003"
         </p>
 
+        {/* Processing Jobs */}
+        {jobs.length > 0 && (
+          <div className="space-y-2">
+            <span className="text-xs font-medium text-[#737373] uppercase">Processing</span>
+            <div className="space-y-2">
+              {jobs.map(job => (
+                <div key={job.id} className="border border-[#E5E5E5] p-3 bg-[#FAFAFA]">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium truncate max-w-[200px]">
+                      {job.input_type === 'url' && job.input_data.url}
+                      {job.input_type === 'text' && job.input_data.text}
+                      {job.input_type === 'file' && job.input_data.filename}
+                    </span>
+                    <span className="text-xs text-[#737373]">{job.progress}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-[#E5E5E5] overflow-hidden">
+                    <div
+                      className="h-full bg-black transition-all duration-500 ease-out"
+                      style={{ width: `${job.progress}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-[#A3A3A3] mt-1 block">
+                    {job.progress_message}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Swipes Grid */}
         {isLoading ? (
           <div className="text-center py-12 text-[#A3A3A3]">Loading...</div>
         ) : filteredSwipes.length === 0 ? (
           <div className="border border-[#E5E5E5] p-12 text-center">
             <p className="text-sm text-[#A3A3A3]">No swipes yet</p>
-            <p className="text-xs text-[#A3A3A3] mt-1">Add inspiration from URLs (Facebook posts, landing pages)</p>
+            <p className="text-xs text-[#A3A3A3] mt-1">Add inspiration from URLs, files, or text</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {filteredSwipes.map(swipe => {
-              const status = getSwipeStatus(swipe)
-              return (
-                <div
-                  key={swipe.id}
-                  onClick={() => status !== 'processing' && setSelectedSwipe(swipe)}
-                  className={`border transition-colors ${
-                    status === 'processing'
-                      ? 'border-[#E5E5E5] opacity-75 cursor-default'
-                      : status === 'failed'
-                      ? 'border-red-200 cursor-pointer hover:border-red-300'
-                      : 'border-[#E5E5E5] hover:border-[#D4D4D4] cursor-pointer'
-                  }`}
-                >
-                  {/* Thumbnail */}
-                  <div className="aspect-video bg-[#F5F5F5] relative overflow-hidden">
-                    {status === 'processing' ? (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-[#737373] gap-3 px-4">
-                        {/* Progress percentage */}
-                        <span className="text-2xl font-bold tabular-nums">
-                          {progressMap[swipe.id]?.percent || 0}%
-                        </span>
-
-                        {/* Progress bar */}
-                        <div className="w-full h-1.5 bg-[#E5E5E5] overflow-hidden">
-                          <div
-                            className="h-full bg-black transition-all duration-500 ease-out"
-                            style={{ width: `${progressMap[swipe.id]?.percent || 0}%` }}
-                          />
-                        </div>
-
-                        {/* Status message */}
-                        <span className="text-xs text-[#A3A3A3] text-center truncate w-full">
-                          {progressMap[swipe.id]?.message || 'Starting...'}
-                        </span>
-                      </div>
-                    ) : status === 'failed' ? (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-red-400 gap-2">
-                        <X className="w-6 h-6" />
-                        <span className="text-xs">Failed</span>
-                      </div>
-                    ) : swipe.thumbnail_url ? (
-                      <img
-                        src={swipe.thumbnail_url}
-                        alt={swipe.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-[#A3A3A3]">
-                        <span className="text-2xl font-bold">{swipe.reference_code}</span>
-                      </div>
-                    )}
-                    {status !== 'processing' && (
-                      <span className={`absolute top-2 left-2 px-1.5 py-0.5 text-[10px] font-medium ${getTypeColor(swipe.swipe_type)}`}>
-                        {getTypeLabel(swipe.swipe_type)}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Info */}
-                  <div className="p-3 space-y-2">
-                    <div className="flex items-start justify-between">
-                      <span className="text-xs font-mono font-bold text-[#737373]">{swipe.reference_code}</span>
-                      {status !== 'processing' && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            copyReferenceCode(swipe.reference_code)
-                          }}
-                          className="p-1 text-[#A3A3A3] hover:text-black transition-colors"
-                        >
-                          {copiedCode === swipe.reference_code ? (
-                            <Check className="w-3 h-3 text-green-600" />
-                          ) : (
-                            <Copy className="w-3 h-3" />
-                          )}
-                        </button>
-                      )}
+            {filteredSwipes.map(swipe => (
+              <div
+                key={swipe.id}
+                onClick={() => setSelectedSwipe(swipe)}
+                className="border border-[#E5E5E5] hover:border-[#D4D4D4] cursor-pointer transition-colors"
+              >
+                {/* Thumbnail */}
+                <div className="aspect-video bg-[#F5F5F5] relative overflow-hidden">
+                  {swipe.thumbnail_url ? (
+                    <img
+                      src={swipe.thumbnail_url}
+                      alt={swipe.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[#A3A3A3]">
+                      <span className="text-2xl font-bold">{swipe.reference_code}</span>
                     </div>
-                    <p className="text-sm font-medium line-clamp-2">{swipe.name}</p>
-                    {swipe.tags && swipe.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {swipe.tags.slice(0, 3).map(tag => (
-                          <span key={tag} className="px-1.5 py-0.5 text-[10px] bg-[#F5F5F5] text-[#737373]">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  )}
+                  <span className={`absolute top-2 left-2 px-1.5 py-0.5 text-[10px] font-medium ${getTypeColor(swipe.swipe_type)}`}>
+                    {getTypeLabel(swipe.swipe_type)}
+                  </span>
                 </div>
-              )
-            })}
+
+                {/* Info */}
+                <div className="p-3 space-y-2">
+                  <div className="flex items-start justify-between">
+                    <span className="text-xs font-mono font-bold text-[#737373]">{swipe.reference_code}</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        copyReferenceCode(swipe.reference_code)
+                      }}
+                      className="p-1 text-[#A3A3A3] hover:text-black transition-colors"
+                    >
+                      {copiedCode === swipe.reference_code ? (
+                        <Check className="w-3 h-3 text-green-600" />
+                      ) : (
+                        <Copy className="w-3 h-3" />
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-sm font-medium line-clamp-2">{swipe.name}</p>
+                  {swipe.tags && swipe.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {swipe.tags.slice(0, 3).map(tag => (
+                        <span key={tag} className="px-1.5 py-0.5 text-[10px] bg-[#F5F5F5] text-[#737373]">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Add Modal - Simplified async flow */}
+      {/* Add Modal */}
       {addModalOpen && (
         <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
           <div className="bg-white border border-[#E5E5E5] w-full max-w-md m-4">
@@ -472,25 +553,99 @@ export function SwipeFile() {
             </div>
 
             <div className="p-4 space-y-4">
+              {/* Mode Selector */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAddMode('url')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium border transition-colors ${
+                    addMode === 'url'
+                      ? 'border-black bg-black text-white'
+                      : 'border-[#E5E5E5] text-[#737373] hover:border-[#D4D4D4]'
+                  }`}
+                >
+                  <Link className="w-4 h-4" />
+                  URL
+                </button>
+                <button
+                  onClick={() => setAddMode('text')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium border transition-colors ${
+                    addMode === 'text'
+                      ? 'border-black bg-black text-white'
+                      : 'border-[#E5E5E5] text-[#737373] hover:border-[#D4D4D4]'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  Text
+                </button>
+                <button
+                  onClick={() => setAddMode('file')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium border transition-colors ${
+                    addMode === 'file'
+                      ? 'border-black bg-black text-white'
+                      : 'border-[#E5E5E5] text-[#737373] hover:border-[#D4D4D4]'
+                  }`}
+                >
+                  <Upload className="w-4 h-4" />
+                  File
+                </button>
+              </div>
+
               {/* URL Input */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">URL</label>
-                <div className="relative">
-                  <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3A3A3]" />
-                  <input
-                    type="text"
-                    value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && !isSubmitting && handleAddUrl()}
-                    placeholder="Paste Facebook post or landing page URL..."
-                    className="w-full h-10 pl-10 pr-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
+              {addMode === 'url' && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">URL</label>
+                  <div className="relative">
+                    <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3A3A3]" />
+                    <input
+                      type="text"
+                      value={urlInput}
+                      onChange={(e) => setUrlInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && !isSubmitting && handleAddUrl()}
+                      placeholder="Paste Facebook post or landing page URL..."
+                      className="w-full h-10 pl-10 pr-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
+                      autoFocus
+                    />
+                  </div>
+                  <p className="text-xs text-[#A3A3A3]">
+                    Facebook posts, landing pages, any public URL
+                  </p>
+                </div>
+              )}
+
+              {/* Text Input */}
+              {addMode === 'text' && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Text</label>
+                  <textarea
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                    placeholder="Paste ad copy, landing page text, or any content..."
+                    className="w-full h-32 p-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black resize-none"
                     autoFocus
                   />
+                  <p className="text-xs text-[#A3A3A3]">
+                    Paste any text - Gemini will analyze and tag it automatically
+                  </p>
                 </div>
-                <p className="text-xs text-[#A3A3A3]">
-                  Landing pages, Facebook posts, any public web page
-                </p>
-              </div>
+              )}
+
+              {/* File Upload */}
+              {addMode === 'file' && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">File</label>
+                  <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-[#E5E5E5] hover:border-[#D4D4D4] cursor-pointer transition-colors">
+                    <Upload className="w-8 h-8 text-[#A3A3A3] mb-2" />
+                    <span className="text-sm text-[#737373]">Click to upload</span>
+                    <span className="text-xs text-[#A3A3A3]">Images, videos, PDFs, text files</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*,video/*,.pdf,.txt,.md"
+                      onChange={handleFileUpload}
+                    />
+                  </label>
+                </div>
+              )}
 
               {/* Optional: Tags */}
               <div className="space-y-2">
@@ -524,33 +679,35 @@ export function SwipeFile() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 pt-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => {
-                    setAddModalOpen(false)
-                    resetAddForm()
-                  }}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={handleAddUrl}
-                  disabled={!urlInput.trim() || isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    'Add'
-                  )}
-                </Button>
-              </div>
+              {addMode !== 'file' && (
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setAddModalOpen(false)
+                      resetAddForm()
+                    }}
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={addMode === 'url' ? handleAddUrl : handleAddText}
+                    disabled={(addMode === 'url' ? !urlInput.trim() : !textInput.trim()) || isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      'Add'
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
