@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ChevronDown,
   ChevronUp,
-  Edit2,
   Plus,
   Trash2,
   RotateCcw,
@@ -107,26 +106,6 @@ async function resetAllFormats(): Promise<void> {
     method: 'POST',
   })
   if (!res.ok) throw new Error('Failed to reset all formats')
-}
-
-async function linkSwipe(format_id: string, swipe_id: string): Promise<void> {
-  const res = await authFetch(
-    `${API_BASE}/settings/formats/${format_id}/link-swipe?swipe_id=${swipe_id}`,
-    {
-      method: 'POST',
-    }
-  )
-  if (!res.ok) throw new Error('Failed to link swipe')
-}
-
-async function unlinkSwipe(format_id: string, swipe_id: string): Promise<void> {
-  const res = await authFetch(
-    `${API_BASE}/settings/formats/${format_id}/unlink-swipe?swipe_id=${swipe_id}`,
-    {
-      method: 'POST',
-    }
-  )
-  if (!res.ok) throw new Error('Failed to unlink swipe')
 }
 
 // Format Card Component
@@ -666,7 +645,6 @@ export function FormatsSection() {
   const {
     data: formats = [],
     isLoading,
-    refetch,
   } = useQuery({
     queryKey: ['formats'],
     queryFn: fetchFormats,
