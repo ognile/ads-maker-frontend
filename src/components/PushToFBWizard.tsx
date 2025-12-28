@@ -571,7 +571,7 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
                 <div className="flex gap-4">
                   {concept.images?.[0] && (
                     <img
-                      src={concept.images[0].startsWith('data:') ? concept.images[0] : `data:image/png;base64,${concept.images[0]}`}
+                      src={concept.images[0].startsWith('data:') || concept.images[0].startsWith('http') ? concept.images[0] : `data:image/png;base64,${concept.images[0]}`}
                       alt="Ad preview"
                       className="w-20 h-20 object-cover border border-[#E5E5E5]"
                     />

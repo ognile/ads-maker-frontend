@@ -294,7 +294,7 @@ export function ConceptDetail({
                   className="border border-[#E5E5E5] hover:border-[#D4D4D4] transition-colors"
                 >
                   <img
-                    src={img.startsWith('data:') ? img : `data:image/png;base64,${img}`}
+                    src={img.startsWith('data:') || img.startsWith('http') ? img : `data:image/png;base64,${img}`}
                     alt={`Generated ${i + 1}`}
                     className="w-32 h-32 object-cover"
                   />
@@ -607,7 +607,7 @@ export function ConceptDetail({
           onClick={() => setEnlargedImage(null)}
         >
           <img
-            src={enlargedImage.startsWith('data:') ? enlargedImage : `data:image/png;base64,${enlargedImage}`}
+            src={enlargedImage.startsWith('data:') || enlargedImage.startsWith('http') ? enlargedImage : `data:image/png;base64,${enlargedImage}`}
             alt="Enlarged"
             className="max-w-[90vw] max-h-[90vh] object-contain"
           />
