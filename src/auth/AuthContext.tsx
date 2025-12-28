@@ -247,7 +247,7 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
     // If in preview mode, also send the preview token header
-    if (token === 'preview_mode') {
+    if (token === PREVIEW_TOKEN) {
       headers.set('X-Preview-Token', PREVIEW_TOKEN)
     }
   }
