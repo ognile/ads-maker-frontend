@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Circle } from 'lucide-react'
+import { Circle, LogOut } from 'lucide-react'
 import { Button } from './components/ui/button'
 import { useToast } from './components/ui/toast'
 import { ConceptList } from './components/ConceptList'
@@ -14,6 +14,7 @@ import { Campaigns } from './components/Campaigns'
 import { Analytics } from './components/Analytics'
 import { Learnings } from './components/Learnings'
 import { Chat } from './components/Chat'
+import { useAuth, Login, authFetch } from './auth'
 
 export interface DataSource {
   id: string
@@ -93,25 +94,25 @@ export interface Product {
 import { API_BASE } from './config'
 
 async function fetchAdConcepts(): Promise<AdConcept[]> {
-  const res = await fetch(`${API_BASE}/concepts`)
+  const res = await authFetch(`${API_BASE}/concepts`)
   if (!res.ok) throw new Error('Failed to fetch concepts')
   return res.json()
 }
 
 async function fetchWorkLog(): Promise<WorkLogEntry[]> {
-  const res = await fetch(`${API_BASE}/work-log`)
+  const res = await authFetch(`${API_BASE}/work-log`)
   if (!res.ok) throw new Error('Failed to fetch work log')
   return res.json()
 }
 
 async function fetchProducts(): Promise<Product[]> {
-  const res = await fetch(`${API_BASE}/products`)
+  const res = await authFetch(`${API_BASE}/products`)
   if (!res.ok) throw new Error('Failed to fetch products')
   return res.json()
 }
 
 async function startWorking(productId: string | null, ideas?: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/start-working`, {
+  const res = await authFetch(`${API_BASE}/start-working`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ product_id: productId, ideas }),
@@ -120,17 +121,17 @@ async function startWorking(productId: string | null, ideas?: string): Promise<v
 }
 
 async function stopWorking(): Promise<void> {
-  const res = await fetch(`${API_BASE}/stop-working`, { method: 'POST' })
+  const res = await authFetch(`${API_BASE}/stop-working`, { method: 'POST' })
   if (!res.ok) throw new Error('Failed to stop')
 }
 
 async function approveConcept(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/concepts/${id}/approve`, { method: 'POST' })
+  const res = await authFetch(`${API_BASE}/concepts/${id}/approve`, { method: 'POST' })
   if (!res.ok) throw new Error('Failed to approve')
 }
 
 async function rejectConcept(id: string, feedback: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/concepts/${id}/reject`, {
+  const res = await authFetch(`${API_BASE}/concepts/${id}/reject`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ feedback }),
@@ -139,7 +140,7 @@ async function rejectConcept(id: string, feedback: string): Promise<void> {
 }
 
 async function addNotes(id: string, notes: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/concepts/${id}/notes`, {
+  const res = await authFetch(`${API_BASE}/concepts/${id}/notes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ notes }),
@@ -148,7 +149,7 @@ async function addNotes(id: string, notes: string): Promise<void> {
 }
 
 async function setRating(id: string, rating: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/concepts/${id}/rating`, {
+  const res = await authFetch(`${API_BASE}/concepts/${id}/rating`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ rating }),
@@ -157,13 +158,14 @@ async function setRating(id: string, rating: number): Promise<void> {
 }
 
 async function deleteConcept(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/concepts/${id}`, { method: 'DELETE' })
+  const res = await authFetch(`${API_BASE}/concepts/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error('Failed to delete concept')
 }
 
 function App() {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const { isAuthenticated, isLoading: isAuthLoading, user, logout } = useAuth()
 
   // Handle FB OAuth callback - check for errors and clear URL
   useEffect(() => {
@@ -177,6 +179,20 @@ function App() {
       window.history.replaceState({}, '', '/')
     }
   }, [])
+
+  // Show loading while checking auth
+  if (isAuthLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-white">
+        <div className="text-sm text-[#737373]">Loading...</div>
+      </div>
+    )
+  }
+
+  // Show login if not authenticated
+  if (!isAuthenticated) {
+    return <Login />
+  }
 
   type ViewType = 'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'swipes' | 'products' | 'settings'
   const validViews: ViewType[] = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'swipes', 'products', 'settings']
@@ -462,6 +478,18 @@ function App() {
               </Button>
             </div>
           )}
+
+          {/* User menu */}
+          <div className="flex items-center gap-2 pl-3 border-l border-[#E5E5E5]">
+            <span className="text-xs text-[#737373]">{user?.email}</span>
+            <button
+              onClick={logout}
+              className="p-1.5 text-[#A3A3A3] hover:text-black"
+              title="Sign out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </header>
 
