@@ -91,21 +91,66 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [])
 
-  // Verify token and get user info
+  // Verify token and get user info (with auto-refresh on expiry)
   async function checkAuth(authToken: string) {
     try {
-      const res = await fetch(`${API_BASE}/auth/me`, {
+      let res = await fetch(`${API_BASE}/auth/me`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
         },
       })
+
+      // If 401, try to refresh the token before giving up
+      if (res.status === 401) {
+        const refreshToken = localStorage.getItem('refresh_token')
+        if (refreshToken) {
+          console.log('Access token expired, attempting refresh...')
+          try {
+            const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refresh_token: refreshToken }),
+            })
+
+            if (refreshRes.ok) {
+              const data = await refreshRes.json()
+              // Store new tokens
+              localStorage.setItem('auth_token', data.access_token)
+              if (data.refresh_token) {
+                localStorage.setItem('refresh_token', data.refresh_token)
+              }
+              // Retry auth check with new token
+              res = await fetch(`${API_BASE}/auth/me`, {
+                headers: {
+                  'Authorization': `Bearer ${data.access_token}`,
+                },
+              })
+              if (res.ok) {
+                const userData = await res.json()
+                setUser(userData)
+                setToken(data.access_token)
+                console.log('Token refreshed successfully')
+                return
+              }
+            }
+          } catch (refreshError) {
+            console.error('Token refresh failed:', refreshError)
+          }
+        }
+        // Refresh failed or no refresh token, clear everything
+        localStorage.removeItem('auth_token')
+        localStorage.removeItem('refresh_token')
+        setToken(null)
+        setUser(null)
+        return
+      }
 
       if (res.ok) {
         const userData = await res.json()
         setUser(userData)
         setToken(authToken)
       } else {
-        // Token invalid, clear it
+        // Token invalid for other reason, clear it
         localStorage.removeItem('auth_token')
         localStorage.removeItem('refresh_token')
         setToken(null)
