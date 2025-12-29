@@ -3,6 +3,7 @@ import { RefreshCw, Settings as SettingsIcon, Bot, Cpu, Eye, Image as ImageIcon,
 import { FacebookConnect } from './FacebookConnect'
 import { Button } from './ui/button'
 import { AdvancedSettings } from './AdvancedSettings'
+import { AutonomousSettings } from './AutonomousSettings'
 import { FormatsSection } from './FormatsSection'
 import { UsageTracking } from './UsageTracking'
 
@@ -477,6 +478,15 @@ export function Settings() {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Autonomous Mode */}
+          <div className="border border-[#E5E5E5] p-4">
+            <h3 className="text-sm font-medium mb-4 flex items-center gap-2">
+              <Bot className="w-4 h-4" />
+              Autonomous Mode
+            </h3>
+            <AutonomousSettings />
           </div>
 
           {/* Advanced AI Customization */}
