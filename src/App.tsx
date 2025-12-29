@@ -9,7 +9,7 @@ import { WorkLogDrawer } from './components/WorkLogDrawer'
 import { SwipeFile } from './components/SwipeFile'
 import { Products } from './components/Products'
 import { Settings } from './components/Settings'
-import { Library } from './components/Library'
+import { BulkPushModal } from './components/BulkPushModal'
 import { Campaigns } from './components/Campaigns'
 import { Analytics } from './components/Analytics'
 import { Learnings } from './components/Learnings'
@@ -169,8 +169,8 @@ async function deleteConcept(id: string): Promise<void> {
   if (!res.ok) throw new Error('Failed to delete concept')
 }
 
-type ViewType = 'chat' | 'work' | 'library' | 'campaigns' | 'analytics' | 'learnings' | 'swipes' | 'studio' | 'products' | 'settings'
-const validViews: ViewType[] = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'swipes', 'studio', 'products', 'settings']
+type ViewType = 'chat' | 'work' | 'campaigns' | 'analytics' | 'learnings' | 'swipes' | 'studio' | 'products' | 'settings'
+const validViews: ViewType[] = ['chat', 'work', 'campaigns', 'analytics', 'learnings', 'swipes', 'studio', 'products', 'settings']
 
 // Read initial view from URL hash or localStorage
 const getInitialView = (): ViewType => {
@@ -203,8 +203,8 @@ function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.slice(1)
-      const validViews = ['chat', 'work', 'library', 'campaigns', 'analytics', 'learnings', 'swipes', 'products', 'settings']
-      if (hash && validViews.includes(hash)) {
+      const views = ['chat', 'work', 'campaigns', 'analytics', 'learnings', 'swipes', 'studio', 'products', 'settings']
+      if (hash && views.includes(hash)) {
         setViewState(hash as typeof view)
       }
     }
@@ -215,6 +215,7 @@ function App() {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>(null)
   const [workLogExpanded, setWorkLogExpanded] = useState(false)
+  const [bulkPushIds, setBulkPushIds] = useState<string[] | null>(null)
 
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
@@ -248,6 +249,9 @@ function App() {
     onSuccess: () => {
       setIsWorking(true)
       queryClient.invalidateQueries({ queryKey: ['workLog'] })
+    },
+    onError: (error) => {
+      toast.error(`Failed to create concept: ${error instanceof Error ? error.message : 'Unknown error'}`)
     },
   })
 
@@ -313,6 +317,39 @@ function App() {
       toast.error('Failed to delete concept')
     },
   })
+
+  // Bulk approve - approve multiple concepts
+  const handleBulkApprove = async (ids: string[]) => {
+    let successCount = 0
+    for (const id of ids) {
+      try {
+        await approveConcept(id)
+        successCount++
+      } catch (e) {
+        console.error(`Failed to approve ${id}:`, e)
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ['concepts'] })
+    toast.success(`Approved ${successCount} concept${successCount !== 1 ? 's' : ''}`)
+  }
+
+  // Bulk delete - delete multiple concepts
+  const handleBulkDelete = async (ids: string[]) => {
+    let successCount = 0
+    for (const id of ids) {
+      try {
+        await deleteConcept(id)
+        successCount++
+      } catch (e) {
+        console.error(`Failed to delete ${id}:`, e)
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ['concepts'] })
+    if (ids.includes(selectedConceptId || '')) {
+      setSelectedConceptId(null)
+    }
+    toast.success(`Deleted ${successCount} concept${successCount !== 1 ? 's' : ''}`)
+  }
 
   const selectedConcept = concepts.find(c => c.id === selectedConceptId) || null
   const latestLog = workLog[workLog.length - 1]
@@ -411,12 +448,6 @@ function App() {
               className={`px-3 py-1 text-sm ${view === 'work' ? 'text-black' : 'text-[#A3A3A3] hover:text-[#737373]'}`}
             >
               Work
-            </button>
-            <button
-              onClick={() => setView('library')}
-              className={`px-3 py-1 text-sm ${view === 'library' ? 'text-black' : 'text-[#A3A3A3] hover:text-[#737373]'}`}
-            >
-              Library
             </button>
             <button
               onClick={() => setView('campaigns')}
@@ -523,24 +554,11 @@ function App() {
           products={products}
           onRefresh={() => queryClient.invalidateQueries({ queryKey: ['products'] })}
         />
-      ) : view === 'library' ? (
-        <Library
-          concepts={concepts}
-          onSelectConcept={(id) => {
-            setSelectedConceptId(id)
-            setView('work')
-          }}
-          onSetRating={(id, rating) => ratingMutation.mutate({ id, rating })}
-          onDownload={(ids) => {
-            // Download functionality - for now just log
-            console.log('Download concepts:', ids)
-          }}
-        />
       ) : view === 'work' ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 flex overflow-hidden">
             {/* Left: Concept List - 220px */}
-            <div className="w-[220px] border-r border-[#E5E5E5] flex-shrink-0">
+            <div className="w-[280px] border-r border-[#E5E5E5] flex-shrink-0">
               <ConceptList
                 concepts={concepts}
                 selectedId={selectedConceptId}
@@ -548,6 +566,10 @@ function App() {
                 isLoading={isLoadingConcepts}
                 isWorking={isWorking}
                 onCreateConcept={handleCreateConcept}
+                onSetRating={(id, rating) => ratingMutation.mutate({ id, rating })}
+                onBulkApprove={handleBulkApprove}
+                onBulkDelete={handleBulkDelete}
+                onBulkPushFB={(ids) => setBulkPushIds(ids)}
               />
             </div>
 
@@ -580,6 +602,19 @@ function App() {
       ) : view === 'studio' ? (
         <ImageStudio />
       ) : null}
+
+      {/* Bulk Push to FB Modal */}
+      {bulkPushIds && (
+        <BulkPushModal
+          conceptIds={bulkPushIds}
+          concepts={concepts.filter(c => bulkPushIds.includes(c.id))}
+          onClose={() => setBulkPushIds(null)}
+          onSuccess={() => {
+            setBulkPushIds(null)
+            toast.success('Concepts pushed to Facebook')
+          }}
+        />
+      )}
     </div>
   )
 }
