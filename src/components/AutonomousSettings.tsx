@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ChevronDown,
@@ -8,7 +8,6 @@ import {
   RefreshCw,
   Zap,
   Target,
-  Clock,
   Shield,
   Sparkles,
   Sliders,
@@ -77,7 +76,7 @@ async function triggerGeneration(): Promise<{ job_id: string }> {
 
 export function AutonomousSettings() {
   const queryClient = useQueryClient()
-  const { toast } = useToast()
+  const toast = useToast()
   const [expandedSection, setExpandedSection] = useState<string | null>('quota')
   const [pendingChanges, setPendingChanges] = useState<Record<string, unknown>>({})
 
@@ -97,11 +96,11 @@ export function AutonomousSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['autonomous-settings'] })
       queryClient.invalidateQueries({ queryKey: ['autonomous-status'] })
-      toast({ title: 'Settings updated' })
+      toast.success('Settings updated')
       setPendingChanges({})
     },
     onError: () => {
-      toast({ title: 'Failed to update settings', variant: 'destructive' })
+      toast.error('Failed to update settings')
     },
   })
 
@@ -109,10 +108,10 @@ export function AutonomousSettings() {
     mutationFn: triggerGeneration,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['autonomous-status'] })
-      toast({ title: `Job queued: ${data.job_id.slice(0, 8)}...` })
+      toast.success(`Job queued: ${data.job_id.slice(0, 8)}...`)
     },
     onError: (error: Error) => {
-      toast({ title: error.message, variant: 'destructive' })
+      toast.error(error.message)
     },
   })
 
