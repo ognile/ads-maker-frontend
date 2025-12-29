@@ -251,6 +251,11 @@ export function ConceptDetail({
                         Format: <span className="font-medium text-[#8B5CF6]">{concept.hypothesis.format_id}</span>
                       </p>
                     )}
+                    {concept.hypothesis.image_preset_id && (
+                      <p className="text-xs text-[#A3A3A3]">
+                        Image Preset: <span className="font-medium text-[#10B981]">{concept.hypothesis.image_preset_id}</span>
+                      </p>
+                    )}
                     {concept.hypothesis.format_reasoning && (
                       <p className="text-xs text-[#737373] italic mt-1">
                         {concept.hypothesis.format_reasoning}
