@@ -246,9 +246,10 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
   const headers = new Headers(options.headers)
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
-    // If in preview mode, also send the preview token header
+    // If in preview mode, use admin API key instead of bearer token
     if (token === PREVIEW_TOKEN) {
-      headers.set('X-Preview-Token', PREVIEW_TOKEN)
+      headers.delete('Authorization')
+      headers.set('X-API-Key', 'nuora_admin_2024')
     }
   }
 
