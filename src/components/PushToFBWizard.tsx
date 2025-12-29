@@ -63,6 +63,7 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
   // Step 3: Push
   const [isPushing, setIsPushing] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
+  const [adStatus, setAdStatus] = useState<'ACTIVE' | 'PAUSED'>('ACTIVE')
 
   // Load campaigns and suggested names on open
   useEffect(() => {
@@ -326,6 +327,7 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
           link_url: linkUrl.trim(),
           primary_text_index: 0,
           headline_index: 0,
+          status: adStatus,
         }),
       })
       if (!res.ok) {
@@ -673,11 +675,38 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
                 </div>
               </div>
 
+              {/* Ad Status */}
+              <div className="border border-[#E5E5E5] p-4">
+                <p className="text-xs text-[#A3A3A3] mb-2">AD STATUS</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setAdStatus('ACTIVE')}
+                    className={`flex-1 h-9 text-sm border ${
+                      adStatus === 'ACTIVE'
+                        ? 'border-black bg-black text-white'
+                        : 'border-[#E5E5E5] hover:border-[#D4D4D4]'
+                    }`}
+                  >
+                    ACTIVE
+                  </button>
+                  <button
+                    onClick={() => setAdStatus('PAUSED')}
+                    className={`flex-1 h-9 text-sm border ${
+                      adStatus === 'PAUSED'
+                        ? 'border-black bg-black text-white'
+                        : 'border-[#E5E5E5] hover:border-[#D4D4D4]'
+                    }`}
+                  >
+                    PAUSED
+                  </button>
+                </div>
+              </div>
+
               {/* Warning */}
               <div className="flex items-start gap-2 p-3 bg-[#FFFBEB] border border-[#FCD34D]">
                 <AlertTriangle className="w-4 h-4 text-[#D97706] flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-[#92400E]">
-                  Ad will be created in <span className="font-medium">PAUSED</span> status. You can activate it from Facebook Ads Manager.
+                  Ad will be created in <span className="font-medium">{adStatus}</span> status.
                 </p>
               </div>
 
