@@ -196,34 +196,53 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
   const handleCreateAdset = async () => {
     if (!newAdsetName.trim() || !selectedCampaign) return
     setIsCreatingAdset(true)
+    const adsetNameToCreate = newAdsetName.trim()
+    const budgetToCreate = isCBO ? 100 : (parseInt(newAdsetBudget) || 500)
+
     try {
       const res = await authFetch(`${API_BASE}/fb/adsets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           campaign_id: selectedCampaign.id,
-          name: newAdsetName.trim(),
-          daily_budget: isCBO ? 100 : (parseInt(newAdsetBudget) || 500),
+          name: adsetNameToCreate,
+          daily_budget: budgetToCreate,
         }),
       })
       if (!res.ok) throw new Error('Failed to create adset')
       const data = await res.json()
       const newAdsetId = data.adset_id
 
-      // Refresh adsets and select new one
-      setIsLoadingAdsets(true)
-      const adsetsRes = await authFetch(`${API_BASE}/fb/adsets?campaign_id=${selectedCampaign.id}&refresh=true`)
-      if (adsetsRes.ok) {
-        const adsetsData = await adsetsRes.json()
-        const newAdsets = adsetsData.adsets || []
-        setAdsets(newAdsets)
-        // Auto-select the newly created adset
-        const newAdset = newAdsets.find((a: FBAdSet) => a.id === newAdsetId)
-        if (newAdset) {
-          setSelectedAdset(newAdset)
-        }
+      // OPTIMISTIC UPDATE: Add the new adset to the list immediately
+      // Facebook's API may not return it immediately due to eventual consistency
+      const optimisticAdset: FBAdSet = {
+        id: newAdsetId,
+        name: adsetNameToCreate,
+        status: 'PAUSED',
+        daily_budget: String(budgetToCreate),
       }
-      setIsLoadingAdsets(false)
+
+      // Add to list and auto-select
+      setAdsets(prev => [optimisticAdset, ...prev])
+      setSelectedAdset(optimisticAdset)
+
+      // Also fetch from API in background to sync any other changes
+      // but don't block the UI on it
+      authFetch(`${API_BASE}/fb/adsets?campaign_id=${selectedCampaign.id}&refresh=true`)
+        .then(async (adsetsRes) => {
+          if (adsetsRes.ok) {
+            const adsetsData = await adsetsRes.json()
+            const freshAdsets = adsetsData.adsets || []
+            // Only update if the new adset is in the list (Facebook caught up)
+            // Otherwise keep our optimistic version
+            const hasNewAdset = freshAdsets.some((a: FBAdSet) => a.id === newAdsetId)
+            if (hasNewAdset) {
+              setAdsets(freshAdsets)
+            }
+          }
+        })
+        .catch(() => {}) // Ignore background refresh errors
+
       setNewAdsetName('')
       setNewAdsetBudget('500')
       setShowNewAdset(false)
@@ -237,36 +256,51 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
   const handleDuplicateAdset = async () => {
     if (!duplicateSource || !newAdsetName.trim()) return
     setIsCreatingAdset(true)
+    const adsetNameToCreate = newAdsetName.trim()
+    const budgetToCreate = isCBO ? undefined : (parseInt(newAdsetBudget) || undefined)
+
     try {
       const res = await authFetch(`${API_BASE}/fb/adsets/duplicate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           source_adset_id: duplicateSource.id,
-          new_name: newAdsetName.trim(),
-          daily_budget: isCBO ? undefined : (parseInt(newAdsetBudget) || undefined),
+          new_name: adsetNameToCreate,
+          daily_budget: budgetToCreate,
         }),
       })
       if (!res.ok) throw new Error('Failed to duplicate adset')
       const data = await res.json()
       const newAdsetId = data.adset_id
 
-      // Refresh adsets
-      if (selectedCampaign) {
-        setIsLoadingAdsets(true)
-        const adsetsRes = await authFetch(`${API_BASE}/fb/adsets?campaign_id=${selectedCampaign.id}&refresh=true`)
-        if (adsetsRes.ok) {
-          const adsetsData = await adsetsRes.json()
-          const newAdsets = adsetsData.adsets || []
-          setAdsets(newAdsets)
-          // Auto-select the newly created adset
-          const newAdset = newAdsets.find((a: FBAdSet) => a.id === newAdsetId)
-          if (newAdset) {
-            setSelectedAdset(newAdset)
-          }
-        }
-        setIsLoadingAdsets(false)
+      // OPTIMISTIC UPDATE: Add the new adset to the list immediately
+      const optimisticAdset: FBAdSet = {
+        id: newAdsetId,
+        name: adsetNameToCreate,
+        status: 'PAUSED',
+        daily_budget: String(budgetToCreate || duplicateSource.daily_budget || '500'),
       }
+
+      // Add to list and auto-select
+      setAdsets(prev => [optimisticAdset, ...prev])
+      setSelectedAdset(optimisticAdset)
+
+      // Background refresh to sync
+      if (selectedCampaign) {
+        authFetch(`${API_BASE}/fb/adsets?campaign_id=${selectedCampaign.id}&refresh=true`)
+          .then(async (adsetsRes) => {
+            if (adsetsRes.ok) {
+              const adsetsData = await adsetsRes.json()
+              const freshAdsets = adsetsData.adsets || []
+              const hasNewAdset = freshAdsets.some((a: FBAdSet) => a.id === newAdsetId)
+              if (hasNewAdset) {
+                setAdsets(freshAdsets)
+              }
+            }
+          })
+          .catch(() => {})
+      }
+
       setNewAdsetName('')
       setNewAdsetBudget('500')
       setShowDuplicateAdset(false)
