@@ -54,6 +54,7 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
   const [newAdsetBudget, setNewAdsetBudget] = useState('500')
   const [isCreatingAdset, setIsCreatingAdset] = useState(false)
   const [linkUrl, setLinkUrl] = useState('')
+  const [isCBO, setIsCBO] = useState(false)
 
   // Suggested naming
   const [suggestedAdsetName, setSuggestedAdsetName] = useState('')
@@ -138,14 +139,25 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
     setIsLoadingAdsets(true)
     setAdsetError(null)
     try {
-      const res = await authFetch(`${API_BASE}/fb/adsets?campaign_id=${campaignId}`)
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
+      // Fetch adsets and check if campaign is CBO in parallel
+      const [adsetsRes, budgetRes] = await Promise.all([
+        authFetch(`${API_BASE}/fb/adsets?campaign_id=${campaignId}`),
+        authFetch(`${API_BASE}/fb/campaigns/${campaignId}/budget-type`).catch(() => null)
+      ])
+
+      if (!adsetsRes.ok) {
+        const data = await adsetsRes.json().catch(() => ({}))
         const isRateLimit = data.detail?.includes('rate') || data.detail?.includes('limit') || data.detail?.includes('Too Many')
         throw new Error(isRateLimit ? 'Rate limit hit - wait a moment and try again' : 'Failed to fetch adsets')
       }
-      const data = await res.json()
+      const data = await adsetsRes.json()
       setAdsets(data.adsets || [])
+
+      // Check if CBO
+      if (budgetRes && budgetRes.ok) {
+        const budgetData = await budgetRes.json()
+        setIsCBO(budgetData.is_cbo || false)
+      }
     } catch (err: any) {
       console.error('Failed to load adsets:', err)
       setAdsetError(err.message || 'Failed to load adsets')
@@ -191,18 +203,27 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
         body: JSON.stringify({
           campaign_id: selectedCampaign.id,
           name: newAdsetName.trim(),
-          daily_budget: parseInt(newAdsetBudget) || 500,
+          daily_budget: isCBO ? 100 : (parseInt(newAdsetBudget) || 500),
         }),
       })
       if (!res.ok) throw new Error('Failed to create adset')
       const data = await res.json()
+      const newAdsetId = data.adset_id
 
       // Refresh adsets and select new one
-      await fetchAdsets(selectedCampaign.id)
-      const newAdset = adsets.find(a => a.id === data.adset_id)
-      if (newAdset) {
-        setSelectedAdset(newAdset)
+      setIsLoadingAdsets(true)
+      const adsetsRes = await authFetch(`${API_BASE}/fb/adsets?campaign_id=${selectedCampaign.id}&refresh=true`)
+      if (adsetsRes.ok) {
+        const adsetsData = await adsetsRes.json()
+        const newAdsets = adsetsData.adsets || []
+        setAdsets(newAdsets)
+        // Auto-select the newly created adset
+        const newAdset = newAdsets.find((a: FBAdSet) => a.id === newAdsetId)
+        if (newAdset) {
+          setSelectedAdset(newAdset)
+        }
       }
+      setIsLoadingAdsets(false)
       setNewAdsetName('')
       setNewAdsetBudget('500')
       setShowNewAdset(false)
@@ -223,15 +244,28 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
         body: JSON.stringify({
           source_adset_id: duplicateSource.id,
           new_name: newAdsetName.trim(),
-          daily_budget: parseInt(newAdsetBudget) || undefined,
+          daily_budget: isCBO ? undefined : (parseInt(newAdsetBudget) || undefined),
         }),
       })
       if (!res.ok) throw new Error('Failed to duplicate adset')
-      await res.json()
+      const data = await res.json()
+      const newAdsetId = data.adset_id
 
-      // Refresh adsets and select new one
+      // Refresh adsets
       if (selectedCampaign) {
-        await fetchAdsets(selectedCampaign.id)
+        setIsLoadingAdsets(true)
+        const adsetsRes = await authFetch(`${API_BASE}/fb/adsets?campaign_id=${selectedCampaign.id}&refresh=true`)
+        if (adsetsRes.ok) {
+          const adsetsData = await adsetsRes.json()
+          const newAdsets = adsetsData.adsets || []
+          setAdsets(newAdsets)
+          // Auto-select the newly created adset
+          const newAdset = newAdsets.find((a: FBAdSet) => a.id === newAdsetId)
+          if (newAdset) {
+            setSelectedAdset(newAdset)
+          }
+        }
+        setIsLoadingAdsets(false)
       }
       setNewAdsetName('')
       setNewAdsetBudget('500')
@@ -413,16 +447,23 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
                     placeholder="Ad set name..."
                     className="w-full h-9 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black font-mono text-xs"
                   />
-                  <div>
-                    <label className="text-xs text-[#A3A3A3] block mb-1">Daily Budget (cents)</label>
-                    <input
-                      type="number"
-                      value={newAdsetBudget}
-                      onChange={(e) => setNewAdsetBudget(e.target.value)}
-                      placeholder="500"
-                      className="w-full h-9 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
-                    />
-                  </div>
+                  {!isCBO && (
+                    <div>
+                      <label className="text-xs text-[#A3A3A3] block mb-1">Daily Budget (cents)</label>
+                      <input
+                        type="number"
+                        value={newAdsetBudget}
+                        onChange={(e) => setNewAdsetBudget(e.target.value)}
+                        placeholder="500"
+                        className="w-full h-9 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
+                      />
+                    </div>
+                  )}
+                  {isCBO && (
+                    <p className="text-xs text-[#737373]">
+                      Budget managed at campaign level (CBO)
+                    </p>
+                  )}
                   <div className="flex gap-2">
                     <Button
                       size="sm"
@@ -444,19 +485,24 @@ export function PushToFBWizard({ concept, product, isOpen, onClose, onSuccess }:
                     </Button>
                   </div>
                 </div>
-              ) : (
+              ) : hasNamingData ? (
                 <button
                   onClick={() => {
                     setShowNewAdset(true)
-                    // Pre-fill with suggested name if available
-                    if (hasNamingData && suggestedAdsetName) {
-                      setNewAdsetName(suggestedAdsetName)
-                    }
+                    setNewAdsetName(suggestedAdsetName)
                   }}
+                  className="w-full h-12 bg-black text-white text-sm font-medium hover:bg-[#333] flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Create Ad Set with Naming Convention
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowNewAdset(true)}
                   className="w-full h-10 border border-dashed border-[#E5E5E5] text-sm text-[#737373] hover:border-black hover:text-black flex items-center justify-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
-                  {hasNamingData ? 'Create Ad Set (with naming convention)' : 'Create New Ad Set'}
+                  Create New Ad Set
                 </button>
               )}
 
