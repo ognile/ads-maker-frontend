@@ -77,6 +77,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Normal flow: check stored token
     const storedToken = localStorage.getItem('auth_token')
     if (storedToken) {
+      // Check if stored token is preview token
+      if (storedToken === 'nuora_preview_2024') {
+        setUser({ id: 'preview', email: 'preview@nuora.com' })
+        setToken('nuora_preview_2024')
+        setIsLoading(false)
+        return
+      }
       setToken(storedToken)
       checkAuth(storedToken)
     } else {
