@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ChevronDown,
@@ -12,6 +12,8 @@ import {
   Link2,
   Check,
   Search,
+  Image as ImageIcon,
+  Upload,
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from './ui/toast'
@@ -29,6 +31,7 @@ interface AdFormat {
   do_list: string[]
   dont_list: string[]
   linked_swipe_ids: string[]
+  reference_image_urls: string[]
   is_active: boolean
   is_default: boolean
 }
@@ -108,6 +111,34 @@ async function resetAllFormats(): Promise<void> {
   if (!res.ok) throw new Error('Failed to reset all formats')
 }
 
+async function addReferenceImage(
+  format_id: string,
+  image_data: string
+): Promise<{ image_url: string; reference_image_urls: string[] }> {
+  const res = await authFetch(
+    `${API_BASE}/settings/formats/${format_id}/add-reference-image`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_data }),
+    }
+  )
+  if (!res.ok) throw new Error('Failed to upload image')
+  return res.json()
+}
+
+async function removeReferenceImage(
+  format_id: string,
+  image_url: string
+): Promise<{ reference_image_urls: string[] }> {
+  const res = await authFetch(
+    `${API_BASE}/settings/formats/${format_id}/remove-reference-image?image_url=${encodeURIComponent(image_url)}`,
+    { method: 'DELETE' }
+  )
+  if (!res.ok) throw new Error('Failed to remove image')
+  return res.json()
+}
+
 // Format Card Component
 function FormatCard({
   format,
@@ -143,8 +174,11 @@ function FormatCard({
           <Link2 className="w-3 h-3" />
           {format.linked_swipe_ids?.length || 0} swipes
         </span>
+        <span className="flex items-center gap-1">
+          <ImageIcon className="w-3 h-3" />
+          {format.reference_image_urls?.length || 0} images
+        </span>
         <span>{format.do_list?.length || 0} do's</span>
-        <span>{format.dont_list?.length || 0} don'ts</span>
       </div>
 
       <div className="flex gap-2">
@@ -309,12 +343,131 @@ function FormatEditorModal({
     do_list: format?.do_list || [],
     dont_list: format?.dont_list || [],
     linked_swipe_ids: format?.linked_swipe_ids || [],
+    reference_image_urls: format?.reference_image_urls || [],
   })
   const [newDoItem, setNewDoItem] = useState('')
   const [newDontItem, setNewDontItem] = useState('')
   const [showSwipeSelector, setShowSwipeSelector] = useState(false)
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const toast = useToast()
 
   const isNew = !format
+
+  // Handle image upload (file or base64)
+  const handleImageUpload = useCallback(
+    async (imageData: string) => {
+      if (!format) return // Can't upload to unsaved format
+
+      setIsUploadingImage(true)
+      try {
+        const result = await addReferenceImage(format.format_id, imageData)
+        setFormData((prev) => ({
+          ...prev,
+          reference_image_urls: result.reference_image_urls,
+        }))
+        toast.success('Image uploaded')
+      } catch (error) {
+        toast.error('Failed to upload image')
+      } finally {
+        setIsUploadingImage(false)
+      }
+    },
+    [format, toast]
+  )
+
+  // Handle file input change
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files
+      if (!files) return
+
+      Array.from(files).forEach((file) => {
+        if (!file.type.startsWith('image/')) return
+        const reader = new FileReader()
+        reader.onload = () => {
+          handleImageUpload(reader.result as string)
+        }
+        reader.readAsDataURL(file)
+      })
+
+      // Reset input
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    },
+    [handleImageUpload]
+  )
+
+  // Handle paste (cmd+v)
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+
+      Array.from(items).forEach((item) => {
+        if (!item.type.startsWith('image/')) return
+        const file = item.getAsFile()
+        if (!file) return
+
+        const reader = new FileReader()
+        reader.onload = () => {
+          handleImageUpload(reader.result as string)
+        }
+        reader.readAsDataURL(file)
+      })
+    },
+    [handleImageUpload]
+  )
+
+  // Handle drag/drop
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }, [])
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      setIsDragging(false)
+
+      const files = e.dataTransfer?.files
+      if (!files) return
+
+      Array.from(files).forEach((file) => {
+        if (!file.type.startsWith('image/')) return
+        const reader = new FileReader()
+        reader.onload = () => {
+          handleImageUpload(reader.result as string)
+        }
+        reader.readAsDataURL(file)
+      })
+    },
+    [handleImageUpload]
+  )
+
+  // Handle image removal
+  const handleRemoveImage = useCallback(
+    async (imageUrl: string) => {
+      if (!format) return
+
+      try {
+        const result = await removeReferenceImage(format.format_id, imageUrl)
+        setFormData((prev) => ({
+          ...prev,
+          reference_image_urls: result.reference_image_urls,
+        }))
+        toast.success('Image removed')
+      } catch (error) {
+        toast.error('Failed to remove image')
+      }
+    },
+    [format, toast]
+  )
 
   const handleAddDoItem = () => {
     if (newDoItem.trim()) {
@@ -545,6 +698,97 @@ function FormatEditorModal({
                 </div>
               </div>
             </div>
+
+            {/* Reference Images - only show for existing formats */}
+            {!isNew && (
+              <div
+                onPaste={handlePaste}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-medium text-[#737373]">
+                    Reference Images ({formData.reference_image_urls.length})
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingImage}
+                    >
+                      {isUploadingImage ? (
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      ) : (
+                        <Upload className="w-3 h-3 mr-1" />
+                      )}
+                      Upload
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Drop zone / Image grid */}
+                <div
+                  className={`border-2 border-dashed rounded-lg p-4 transition-colors ${
+                    isDragging
+                      ? 'border-black bg-gray-50'
+                      : 'border-[#E5E5E5]'
+                  }`}
+                >
+                  {formData.reference_image_urls.length === 0 ? (
+                    <div className="text-center py-6">
+                      <ImageIcon className="w-8 h-8 mx-auto mb-2 text-[#A3A3A3]" />
+                      <p className="text-sm text-[#737373] mb-1">
+                        Drop images here, paste with ⌘V, or click Upload
+                      </p>
+                      <p className="text-xs text-[#A3A3A3]">
+                        These images teach AI what this format should look like visually
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-4 gap-3">
+                      {formData.reference_image_urls.map((url, index) => (
+                        <div key={index} className="relative group">
+                          <img
+                            src={url}
+                            alt={`Reference ${index + 1}`}
+                            className="w-full aspect-square object-cover rounded border border-[#E5E5E5]"
+                          />
+                          <button
+                            onClick={() => handleRemoveImage(url)}
+                            className="absolute top-1 right-1 p-1 bg-black/70 hover:bg-black rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="w-3 h-3 text-white" />
+                          </button>
+                        </div>
+                      ))}
+                      {/* Add more button */}
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full aspect-square border-2 border-dashed border-[#E5E5E5] rounded flex items-center justify-center hover:border-[#A3A3A3] transition-colors"
+                      >
+                        <Plus className="w-6 h-6 text-[#A3A3A3]" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {isNew && (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                <strong>Note:</strong> Save the format first, then you can add reference images.
+              </div>
+            )}
 
             {/* Linked Swipes */}
             <div>
