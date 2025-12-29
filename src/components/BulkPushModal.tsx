@@ -39,8 +39,8 @@ export function BulkPushModal({ conceptIds, concepts, onClose, onSuccess }: Bulk
   // Link URL
   const [linkUrl, setLinkUrl] = useState('')
 
-  // Naming template
-  const [namingTemplate, setNamingTemplate] = useState('{batch}--{product}--{format}--{angle}')
+  // Ad status (ACTIVE or PAUSED)
+  const [adStatus, setAdStatus] = useState<'ACTIVE' | 'PAUSED'>('ACTIVE')
 
   // Push state
   const [isPushing, setIsPushing] = useState(false)
@@ -78,23 +78,6 @@ export function BulkPushModal({ conceptIds, concepts, onClose, onSuccess }: Bulk
     return campaigns.filter(c => c.name.toLowerCase().includes(search))
   }, [campaigns, campaignSearch])
 
-  // Generate preview name for first concept
-  const previewName = useMemo(() => {
-    const concept = approvedConcepts[0]
-    if (!concept) return ''
-
-    const today = new Date().toISOString().split('T')[0]
-    const hypothesis = concept.hypothesis as any
-
-    return namingTemplate
-      .replace('{date}', today)
-      .replace('{batch}', concept.batch_number)
-      .replace('{product}', 'Nuora')
-      .replace('{format}', hypothesis?.format_id || concept.format_id || 'unknown')
-      .replace('{angle}', (hypothesis?.angle || '').substring(0, 30))
-      .replace('{avatar}', (hypothesis?.target_avatar || '').substring(0, 20))
-      .replace('{awareness}', hypothesis?.awareness_stage || '')
-  }, [approvedConcepts, namingTemplate])
 
   const handlePush = async () => {
     if (!selectedCampaign || !linkUrl.trim() || approvedConcepts.length === 0) return
@@ -110,8 +93,8 @@ export function BulkPushModal({ conceptIds, concepts, onClose, onSuccess }: Bulk
         body: JSON.stringify({
           concept_ids: approvedConcepts.map(c => c.id),
           campaign_id: selectedCampaign.id,
-          naming_template: namingTemplate,
           link_url: linkUrl.trim(),
+          status: adStatus,
         }),
       })
 
@@ -236,24 +219,31 @@ export function BulkPushModal({ conceptIds, concepts, onClose, onSuccess }: Bulk
                 )}
               </div>
 
-              {/* Naming Template */}
+              {/* Ad Status */}
               <div>
-                <label className="text-xs text-[#737373] block mb-2">Ad Set Naming Convention</label>
-                <input
-                  type="text"
-                  value={namingTemplate}
-                  onChange={(e) => setNamingTemplate(e.target.value)}
-                  placeholder="{batch}--{product}--{format}--{angle}"
-                  className="w-full h-9 px-3 border border-[#E5E5E5] text-sm font-mono focus:outline-none focus:border-black"
-                />
-                <p className="text-xs text-[#A3A3A3] mt-1">
-                  Variables: {'{date}'}, {'{batch}'}, {'{product}'}, {'{format}'}, {'{angle}'}, {'{avatar}'}, {'{awareness}'}
-                </p>
-                {previewName && (
-                  <p className="text-xs text-[#737373] mt-2">
-                    Preview: <span className="font-mono">{previewName}</span>
-                  </p>
-                )}
+                <label className="text-xs text-[#737373] block mb-2">Ad Status</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setAdStatus('ACTIVE')}
+                    className={`flex-1 h-9 text-sm border ${
+                      adStatus === 'ACTIVE'
+                        ? 'border-black bg-black text-white'
+                        : 'border-[#E5E5E5] hover:border-[#D4D4D4]'
+                    }`}
+                  >
+                    ACTIVE
+                  </button>
+                  <button
+                    onClick={() => setAdStatus('PAUSED')}
+                    className={`flex-1 h-9 text-sm border ${
+                      adStatus === 'PAUSED'
+                        ? 'border-black bg-black text-white'
+                        : 'border-[#E5E5E5] hover:border-[#D4D4D4]'
+                    }`}
+                  >
+                    PAUSED
+                  </button>
+                </div>
               </div>
 
               {/* Link URL */}
@@ -286,7 +276,7 @@ export function BulkPushModal({ conceptIds, concepts, onClose, onSuccess }: Bulk
                 <AlertTriangle className="w-4 h-4 text-[#D97706] flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-xs text-[#92400E]">
-                    This will create <span className="font-medium">{approvedConcepts.length} new ad set{approvedConcepts.length !== 1 ? 's' : ''}</span> and ads in <span className="font-medium">PAUSED</span> status.
+                    This will create <span className="font-medium">{approvedConcepts.length} new ad set{approvedConcepts.length !== 1 ? 's' : ''}</span> and ads in <span className="font-medium">{adStatus}</span> status.
                   </p>
                 </div>
               </div>
