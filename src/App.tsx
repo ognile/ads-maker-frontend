@@ -42,6 +42,7 @@ export interface Hypothesis {
   confidence: number
   format_id?: string
   format_reasoning?: string
+  image_preset_id?: string
 }
 
 export interface ChangelogEntry {
