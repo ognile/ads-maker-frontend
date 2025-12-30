@@ -67,7 +67,6 @@ export function Products({ products, onRefresh }: ProductsProps) {
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchCategory, setSearchCategory] = useState<CategoryKey | null>(null)
 
   // Auto-select first product
   useEffect(() => {
