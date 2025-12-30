@@ -47,6 +47,89 @@ interface PerformanceGoals {
 import { API_BASE } from '../config'
 import { authFetch } from '../auth'
 
+// URL Tags (UTM Parameters) Component
+function UrlTagsField() {
+  const [urlTags, setUrlTags] = useState<string>('')
+  const [originalUrlTags, setOriginalUrlTags] = useState<string>('')
+  const [isSaving, setIsSaving] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchUrlTags = async () => {
+      try {
+        const res = await authFetch(`${API_BASE}/settings/url-tags`)
+        if (res.ok) {
+          const data = await res.json()
+          setUrlTags(data.default_url_tags || '')
+          setOriginalUrlTags(data.default_url_tags || '')
+        }
+      } catch (error) {
+        console.error('Failed to fetch URL tags:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchUrlTags()
+  }, [])
+
+  const saveUrlTags = async () => {
+    setIsSaving(true)
+    try {
+      const res = await authFetch(`${API_BASE}/settings/url-tags`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_url_tags: urlTags || null }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setOriginalUrlTags(data.default_url_tags || '')
+      }
+    } catch (error) {
+      console.error('Failed to save URL tags:', error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const hasChanges = urlTags !== originalUrlTags
+
+  if (isLoading) return null
+
+  return (
+    <div className="border border-[#E5E5E5] p-4 mt-2">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <span className="text-sm font-medium">URL Tags (UTM Parameters)</span>
+          <p className="text-xs text-[#A3A3A3] mt-0.5">
+            Appended to all ad links. Supports dynamic params like {'{{ad.id}}'}
+          </p>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={urlTags}
+          onChange={(e) => setUrlTags(e.target.value)}
+          placeholder="utm_source={{site_source_name}}&utm_adid={{ad.id}}"
+          className="flex-1 border border-[#E5E5E5] px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-black"
+        />
+        <Button
+          size="sm"
+          onClick={saveUrlTags}
+          disabled={!hasChanges || isSaving}
+        >
+          {isSaving ? 'Saving...' : 'Save'}
+        </Button>
+      </div>
+      {urlTags && (
+        <p className="text-xs text-[#A3A3A3] mt-2">
+          Preview: mynuora.com/products/gummies?{urlTags}
+        </p>
+      )}
+    </div>
+  )
+}
+
 const TASK_LABELS: Record<string, { label: string; description: string; icon: typeof Bot }> = {
   orchestrator: {
     label: 'Orchestrator',
@@ -508,6 +591,7 @@ export function Settings() {
               Facebook Ads Integration
             </h3>
             <FacebookConnect />
+            <UrlTagsField />
           </div>
 
           {/* Ad Copy Formats */}
