@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Loader2,
   Image as ImageIcon,
+  ChevronDown,
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { ConfirmationCard } from './ConfirmationCard'
@@ -50,6 +51,14 @@ interface Attachment {
   type: string
   data: string
   size: number
+}
+
+interface ChatModel {
+  id: string
+  name: string
+  provider: string
+  supports_thinking?: boolean
+  thinking_enabled?: boolean
 }
 
 async function fetchConversations(): Promise<Conversation[]> {
@@ -99,6 +108,12 @@ async function uploadFile(conversationId: string, file: File): Promise<Attachmen
   return res.json()
 }
 
+async function fetchChatModels(): Promise<{ models: ChatModel[]; current_model: string }> {
+  const res = await authFetch(`${API_BASE}/settings/chat-models`)
+  if (!res.ok) throw new Error('Failed to fetch chat models')
+  return res.json()
+}
+
 export function Chat() {
   const queryClient = useQueryClient()
   const { isAuthenticated } = useAuth()
@@ -109,6 +124,8 @@ export function Chat() {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -136,6 +153,22 @@ export function Chat() {
     enabled: !!selectedConversationId,
     refetchInterval: 3000,
   })
+
+  // Fetch chat models
+  const { data: chatModelsData } = useQuery({
+    queryKey: ['chatModels'],
+    queryFn: fetchChatModels,
+    enabled: isAuthenticated,
+  })
+
+  const chatModels = chatModelsData?.models || []
+
+  // Set default model when loaded
+  useEffect(() => {
+    if (chatModelsData?.current_model && !selectedModel) {
+      setSelectedModel(chatModelsData.current_model)
+    }
+  }, [chatModelsData, selectedModel])
 
   // Auto-select first conversation or create one
   useEffect(() => {
@@ -209,6 +242,7 @@ export function Chat() {
         body: JSON.stringify({
           message: currentMessage,
           attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
+          model_id: selectedModel || undefined,
         }),
       })
 
@@ -499,6 +533,49 @@ export function Chat() {
                 >
                   <Paperclip className="w-5 h-5" />
                 </button>
+
+                {/* Model Selector */}
+                <div className="relative">
+                  <button
+                    onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
+                    className="flex items-center gap-1 px-2 py-1.5 text-xs border border-[#E5E5E5] hover:border-[#A3A3A3] transition-colors"
+                  >
+                    <span className="max-w-[100px] truncate">
+                      {chatModels.find(m => m.id === selectedModel)?.name || 'Model'}
+                    </span>
+                    <ChevronDown className="w-3 h-3 text-[#A3A3A3]" />
+                  </button>
+
+                  {modelDropdownOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setModelDropdownOpen(false)}
+                      />
+                      <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#E5E5E5] shadow-lg z-20 min-w-[180px]">
+                        {chatModels.map(model => (
+                          <button
+                            key={model.id}
+                            onClick={() => {
+                              setSelectedModel(model.id)
+                              setModelDropdownOpen(false)
+                            }}
+                            className={`w-full text-left px-3 py-2 text-xs hover:bg-[#F5F5F5] flex items-center justify-between ${
+                              selectedModel === model.id ? 'bg-[#F5F5F5]' : ''
+                            }`}
+                          >
+                            <span>{model.name}</span>
+                            {model.thinking_enabled && (
+                              <span className="text-[10px] px-1 py-0.5 bg-purple-100 text-purple-700 rounded">
+                                thinking
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
 
                 <textarea
                   ref={inputRef}

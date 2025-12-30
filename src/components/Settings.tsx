@@ -16,6 +16,15 @@ interface ModelOption {
   id: string
   name: string
   provider: string
+  thinking_enabled?: boolean
+  supports_thinking?: boolean
+}
+
+interface ThinkingSettings {
+  thinking_budget: number
+  min_budget: number
+  max_budget: number
+  default_budget: number
 }
 
 interface ModelSettings {
@@ -64,10 +73,12 @@ const TASK_LABELS: Record<string, { label: string; description: string; icon: ty
 export function Settings() {
   const [settings, setSettings] = useState<SettingsData | null>(null)
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null)
+  const [thinkingSettings, setThinkingSettings] = useState<ThinkingSettings | null>(null)
   const [goals, setGoals] = useState<PerformanceGoals | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [savingModel, setSavingModel] = useState<string | null>(null)
+  const [savingThinking, setSavingThinking] = useState(false)
   const [savingGoals, setSavingGoals] = useState(false)
   const [showAdvancedGoals, setShowAdvancedGoals] = useState(false)
 
@@ -77,13 +88,17 @@ export function Settings() {
   const [savingPrinciples, setSavingPrinciples] = useState(false)
   const [showPrinciples, setShowPrinciples] = useState(false)
 
+  // Local thinking budget for slider
+  const [localThinkingBudget, setLocalThinkingBudget] = useState<number>(10000)
+
   const fetchSettings = async () => {
     try {
-      const [settingsRes, modelsRes, goalsRes, principlesRes] = await Promise.all([
+      const [settingsRes, modelsRes, goalsRes, principlesRes, thinkingRes] = await Promise.all([
         authFetch(`${API_BASE}/settings`),
         authFetch(`${API_BASE}/settings/models`),
         authFetch(`${API_BASE}/settings/goals`),
         authFetch(`${API_BASE}/settings/copywriting-principles`),
+        authFetch(`${API_BASE}/settings/thinking`),
       ])
 
       if (settingsRes.ok) {
@@ -106,10 +121,35 @@ export function Settings() {
         setCopywritingPrinciples(data.principles)
         setOriginalPrinciples(data.principles)
       }
+
+      if (thinkingRes.ok) {
+        const data = await thinkingRes.json()
+        setThinkingSettings(data)
+        setLocalThinkingBudget(data.thinking_budget)
+      }
     } catch (error) {
       console.error('Failed to fetch settings:', error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const updateThinkingBudget = async (budget: number) => {
+    setSavingThinking(true)
+    try {
+      const res = await authFetch(`${API_BASE}/settings/thinking/budget`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budget }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setThinkingSettings(prev => prev ? { ...prev, thinking_budget: data.thinking_budget } : null)
+      }
+    } catch (error) {
+      console.error('Failed to update thinking budget:', error)
+    } finally {
+      setSavingThinking(false)
     }
   }
 
@@ -418,8 +458,47 @@ export function Settings() {
               </div>
 
               <p className="text-xs text-[#A3A3A3] mt-4">
-                Different models have different capabilities and costs. Claude Opus is most capable but expensive.
+                Different models have different capabilities and costs. Models marked "(Thinking)" use extended thinking for better reasoning.
               </p>
+
+              {/* Thinking Budget Slider */}
+              {thinkingSettings && (
+                <div className="mt-6 pt-4 border-t border-[#E5E5E5]">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <span className="text-sm font-medium">Thinking Budget</span>
+                      <p className="text-xs text-[#A3A3A3] mt-0.5">
+                        Token budget for extended thinking (only applies to Thinking models)
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm font-mono">{localThinkingBudget.toLocaleString()}</span>
+                      <span className="text-xs text-[#A3A3A3] ml-1">tokens</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-[#A3A3A3]">1K</span>
+                    <input
+                      type="range"
+                      min={thinkingSettings.min_budget}
+                      max={thinkingSettings.max_budget}
+                      step={1000}
+                      value={localThinkingBudget}
+                      onChange={(e) => setLocalThinkingBudget(parseInt(e.target.value))}
+                      onMouseUp={() => updateThinkingBudget(localThinkingBudget)}
+                      onTouchEnd={() => updateThinkingBudget(localThinkingBudget)}
+                      className="flex-1 h-2 bg-[#E5E5E5] rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-black"
+                    />
+                    <span className="text-xs text-[#A3A3A3]">128K</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-xs text-[#A3A3A3]">
+                      Higher budget = more reasoning = better quality but slower & more expensive
+                    </span>
+                    {savingThinking && <span className="text-xs text-[#A3A3A3]">Saving...</span>}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

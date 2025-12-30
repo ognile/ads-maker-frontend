@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, ChevronUp, X, Star, Copy, Check, Download, Trash2, Send } from 'lucide-react'
 import { Button } from './ui/button'
 import { PushToFBWizard } from './PushToFBWizard'
+import { LLMLogsViewer } from './LLMLogsViewer'
 import type { AdConcept, Product } from '../App'
 
 interface ConceptDetailProps {
@@ -64,6 +65,7 @@ export function ConceptDetail({
   const [originalExpanded, setOriginalExpanded] = useState(false)
   const [changelogExpanded, setChangelogExpanded] = useState(false)
   const [reviewExpanded, setReviewExpanded] = useState(false)
+  const [llmLogsExpanded, setLlmLogsExpanded] = useState(false)
 
   // Facebook Push wizard
   const [fbWizardOpen, setFbWizardOpen] = useState(false)
@@ -513,6 +515,27 @@ export function ConceptDetail({
             )}
           </div>
         )}
+
+        {/* LLM Logs */}
+        <div className="space-y-2">
+          <button
+            onClick={() => setLlmLogsExpanded(!llmLogsExpanded)}
+            className="w-full flex items-center justify-between text-left"
+          >
+            <h3 className="text-xs font-medium text-[#737373] uppercase tracking-wide">
+              LLM Logs
+            </h3>
+            {llmLogsExpanded ? (
+              <ChevronUp className="w-4 h-4 text-[#A3A3A3]" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-[#A3A3A3]" />
+            )}
+          </button>
+
+          {llmLogsExpanded && (
+            <LLMLogsViewer conceptId={concept.id} />
+          )}
+        </div>
 
         {/* User Notes */}
         {concept.user_notes && (
