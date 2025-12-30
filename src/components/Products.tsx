@@ -217,7 +217,10 @@ export function Products({ products, onRefresh }: ProductsProps) {
 
   // Add source from upload modal
   const handleUploadSubmit = async () => {
-    if (!uploadName.trim() || !uploadContent.trim() || !selectedProductId) return
+    if (!uploadContent.trim() || !selectedProductId) return
+
+    // Auto-generate name from content if not provided
+    const name = uploadName.trim() || uploadContent.slice(0, 50).replace(/\n/g, ' ').trim() + (uploadContent.length > 50 ? '...' : '')
 
     setIsSubmitting(true)
     try {
@@ -225,7 +228,7 @@ export function Products({ products, onRefresh }: ProductsProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: uploadName.trim(),
+          name,
           source_type: uploadFileType ? 'file' : 'text',
           file_type: uploadFileType,
           content: uploadContent.trim(),
@@ -677,12 +680,12 @@ export function Products({ products, onRefresh }: ProductsProps) {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Name</label>
+                <label className="text-sm font-medium">Name <span className="text-[#A3A3A3] font-normal">(optional)</span></label>
                 <input
                   type="text"
                   value={uploadName}
                   onChange={(e) => setUploadName(e.target.value)}
-                  placeholder="e.g., Customer Reviews December"
+                  placeholder="Auto-generated from content if left empty"
                   className="w-full h-9 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
                 />
               </div>
@@ -724,7 +727,7 @@ export function Products({ products, onRefresh }: ProductsProps) {
                 <Button
                   className="flex-1"
                   onClick={handleUploadSubmit}
-                  disabled={!uploadName.trim() || !uploadContent.trim() || isSubmitting}
+                  disabled={!uploadContent.trim() || isSubmitting}
                 >
                   {isSubmitting ? 'Adding...' : 'Add'}
                 </Button>
