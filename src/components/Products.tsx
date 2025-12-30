@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { RefreshCw, Trash2, Plus, X, Edit2, Upload, FileText, ChevronDown, ChevronUp } from 'lucide-react'
+import { RefreshCw, Trash2, Plus, X, Edit2, Upload, ChevronDown, ChevronUp, Search, Zap, FileText, Users, BookOpen, Lightbulb, Check } from 'lucide-react'
 import { Button } from './ui/button'
 import type { Product, DataSource } from '../App'
 
@@ -11,12 +11,27 @@ interface ProductsProps {
 import { API_BASE } from '../config'
 import { authFetch } from '../auth'
 
+// Extended DataSource with category
+interface CategorizedDataSource extends DataSource {
+  category: 'hook' | 'example' | 'reviews' | 'survey' | 'document'
+}
+
+type CategoryKey = 'hook' | 'example' | 'reviews' | 'survey' | 'document'
+
+const CATEGORY_CONFIG: Record<CategoryKey, { label: string; icon: typeof Lightbulb; color: string; description: string }> = {
+  hook: { label: 'Hooks & Angles', icon: Zap, color: 'text-amber-600', description: 'One-liners, openers, viral concepts' },
+  example: { label: 'Copy Examples', icon: FileText, color: 'text-blue-600', description: 'Full ads to match style' },
+  reviews: { label: 'Customer Reviews', icon: Users, color: 'text-green-600', description: 'Customer testimonials' },
+  survey: { label: 'Survey Data', icon: Users, color: 'text-purple-600', description: 'Desires & experiences' },
+  document: { label: 'Documents', icon: BookOpen, color: 'text-gray-600', description: 'Mechanism, metrics, other' },
+}
+
 export function Products({ products, onRefresh }: ProductsProps) {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [expandedProductId, setExpandedProductId] = useState<string | null>(null)
-  const [productSources, setProductSources] = useState<Record<string, DataSource[]>>({})
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
+  const [productSources, setProductSources] = useState<Record<string, CategorizedDataSource[]>>({})
 
   // Form state
   const [name, setName] = useState('')
@@ -24,21 +39,49 @@ export function Products({ products, onRefresh }: ProductsProps) {
   const [mechanism, setMechanism] = useState('')
   const [ingredients, setIngredients] = useState('')
 
-  // Data source modal state
-  const [sourceModalOpen, setSourceModalOpen] = useState(false)
-  const [sourceProductId, setSourceProductId] = useState<string | null>(null)
-  const [sourceMode, setSourceMode] = useState<'file' | 'text'>('text')
-  const [sourceName, setSourceName] = useState('')
-  const [sourceContent, setSourceContent] = useState('')
-  const [sourceFileType, setSourceFileType] = useState<string | null>(null)
+  // Quick add state
+  const [quickAddContent, setQuickAddContent] = useState('')
+  const [quickAddSubmitting, setQuickAddSubmitting] = useState(false)
+
+  // Category expansion state
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
+    hook: true,
+    example: true,
+    reviews: false,
+    survey: false,
+    document: false,
+  })
+
+  // Edit source state
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null)
+  const [editingSourceContent, setEditingSourceContent] = useState('')
+  const [editingSourceName, setEditingSourceName] = useState('')
+
+  // Upload modal state
+  const [uploadModalOpen, setUploadModalOpen] = useState(false)
+  const [uploadCategory, setUploadCategory] = useState<CategoryKey>('example')
+  const [uploadName, setUploadName] = useState('')
+  const [uploadContent, setUploadContent] = useState('')
+  const [uploadFileType, setUploadFileType] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Fetch data sources for expanded product
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchCategory, setSearchCategory] = useState<CategoryKey | null>(null)
+
+  // Auto-select first product
   useEffect(() => {
-    if (expandedProductId && !productSources[expandedProductId]) {
-      fetchProductSources(expandedProductId)
+    if (products.length > 0 && !selectedProductId) {
+      setSelectedProductId(products[0].id)
     }
-  }, [expandedProductId])
+  }, [products])
+
+  // Fetch sources when product selected
+  useEffect(() => {
+    if (selectedProductId && !productSources[selectedProductId]) {
+      fetchProductSources(selectedProductId)
+    }
+  }, [selectedProductId])
 
   const fetchProductSources = async (productId: string) => {
     try {
@@ -50,6 +93,27 @@ export function Products({ products, onRefresh }: ProductsProps) {
     } catch (error) {
       console.error('Failed to fetch product sources:', error)
     }
+  }
+
+  const selectedProduct = products.find(p => p.id === selectedProductId)
+  const sources = selectedProductId ? (productSources[selectedProductId] || []) : []
+
+  // Group sources by category
+  const sourcesByCategory = sources.reduce((acc, source) => {
+    const category = (source.category || 'document') as CategoryKey
+    if (!acc[category]) acc[category] = []
+    acc[category].push(source)
+    return acc
+  }, {} as Record<CategoryKey, CategorizedDataSource[]>)
+
+  // Filter sources by search
+  const filterSources = (sources: CategorizedDataSource[]) => {
+    if (!searchQuery) return sources
+    const query = searchQuery.toLowerCase()
+    return sources.filter(s =>
+      s.name.toLowerCase().includes(query) ||
+      s.content.toLowerCase().includes(query)
+    )
   }
 
   const openCreateModal = () => {
@@ -100,46 +164,61 @@ export function Products({ products, onRefresh }: ProductsProps) {
   }
 
   const handleDelete = async (id: string) => {
+    if (!confirm('Delete this product and all its data sources?')) return
     const res = await authFetch(`${API_BASE}/products/${id}`, { method: 'DELETE' })
     if (res.ok) {
+      if (selectedProductId === id) {
+        setSelectedProductId(products.find(p => p.id !== id)?.id || null)
+      }
       onRefresh()
     }
   }
 
-  const toggleExpanded = (productId: string) => {
-    setExpandedProductId(prev => prev === productId ? null : productId)
+  // Quick add handler
+  const handleQuickAdd = async () => {
+    if (!quickAddContent.trim() || !selectedProductId) return
+
+    setQuickAddSubmitting(true)
+    try {
+      const res = await authFetch(`${API_BASE}/data-sources/quick-add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: quickAddContent.trim(),
+          product_id: selectedProductId,
+        }),
+      })
+      if (res.ok) {
+        setQuickAddContent('')
+        fetchProductSources(selectedProductId)
+      }
+    } finally {
+      setQuickAddSubmitting(false)
+    }
   }
 
-  // Data source handlers
-  const openSourceModal = (productId: string, mode: 'file' | 'text') => {
-    setSourceProductId(productId)
-    setSourceMode(mode)
-    setSourceName('')
-    setSourceContent('')
-    setSourceFileType(null)
-    setSourceModalOpen(true)
-  }
-
+  // File upload handler
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
     const ext = file.name.split('.').pop()?.toLowerCase()
-    setSourceFileType(ext || null)
+    setUploadFileType(ext || null)
 
     const reader = new FileReader()
     reader.onload = (e) => {
       const text = e.target?.result as string
-      setSourceContent(text)
-      if (!sourceName) {
-        setSourceName(file.name.replace(/\.[^/.]+$/, ''))
+      setUploadContent(text)
+      if (!uploadName) {
+        setUploadName(file.name.replace(/\.[^/.]+$/, ''))
       }
     }
     reader.readAsText(file)
   }
 
-  const handleAddSource = async () => {
-    if (!sourceName.trim() || !sourceContent.trim() || !sourceProductId) return
+  // Add source from upload modal
+  const handleUploadSubmit = async () => {
+    if (!uploadName.trim() || !uploadContent.trim() || !selectedProductId) return
 
     setIsSubmitting(true)
     try {
@@ -147,34 +226,212 @@ export function Products({ products, onRefresh }: ProductsProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: sourceName.trim(),
-          source_type: sourceMode,
-          file_type: sourceFileType,
-          content: sourceContent.trim(),
-          product_id: sourceProductId,
+          name: uploadName.trim(),
+          source_type: uploadFileType ? 'file' : 'text',
+          file_type: uploadFileType,
+          content: uploadContent.trim(),
+          product_id: selectedProductId,
+          category: uploadCategory,
         }),
       })
       if (res.ok) {
-        setSourceModalOpen(false)
-        fetchProductSources(sourceProductId)
+        setUploadModalOpen(false)
+        setUploadName('')
+        setUploadContent('')
+        setUploadFileType(null)
+        fetchProductSources(selectedProductId)
       }
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const handleDeleteSource = async (sourceId: string, productId: string) => {
+  // Edit source handlers
+  const startEditSource = (source: CategorizedDataSource) => {
+    setEditingSourceId(source.id)
+    setEditingSourceContent(source.content)
+    setEditingSourceName(source.name)
+  }
+
+  const cancelEditSource = () => {
+    setEditingSourceId(null)
+    setEditingSourceContent('')
+    setEditingSourceName('')
+  }
+
+  const saveEditSource = async () => {
+    if (!editingSourceId || !selectedProductId) return
+
+    setIsSubmitting(true)
+    try {
+      const res = await authFetch(`${API_BASE}/data-sources/${editingSourceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editingSourceName.trim(),
+          content: editingSourceContent.trim(),
+        }),
+      })
+      if (res.ok) {
+        cancelEditSource()
+        fetchProductSources(selectedProductId)
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleDeleteSource = async (sourceId: string) => {
+    if (!selectedProductId) return
     const res = await authFetch(`${API_BASE}/data-sources/${sourceId}`, { method: 'DELETE' })
     if (res.ok) {
-      fetchProductSources(productId)
+      fetchProductSources(selectedProductId)
     }
+  }
+
+  const toggleCategory = (category: CategoryKey) => {
+    setExpandedCategories(prev => ({ ...prev, [category]: !prev[category] }))
+  }
+
+  const openUploadModal = (category: CategoryKey) => {
+    setUploadCategory(category)
+    setUploadName('')
+    setUploadContent('')
+    setUploadFileType(null)
+    setUploadModalOpen(true)
+  }
+
+  // Render a source item
+  const renderSourceItem = (source: CategorizedDataSource) => {
+    const isEditing = editingSourceId === source.id
+    const preview = source.content.slice(0, 100).replace(/\n/g, ' ')
+
+    if (isEditing) {
+      return (
+        <div key={source.id} className="border border-black bg-white p-3 space-y-2">
+          <input
+            type="text"
+            value={editingSourceName}
+            onChange={(e) => setEditingSourceName(e.target.value)}
+            className="w-full h-8 px-2 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
+          />
+          <textarea
+            value={editingSourceContent}
+            onChange={(e) => setEditingSourceContent(e.target.value)}
+            className="w-full h-32 p-2 border border-[#E5E5E5] text-sm resize-none focus:outline-none focus:border-black font-mono"
+          />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={saveEditSource} disabled={isSubmitting}>
+              <Check className="w-3 h-3 mr-1" />
+              Save
+            </Button>
+            <Button size="sm" variant="outline" onClick={cancelEditSource}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div
+        key={source.id}
+        className="border border-[#E5E5E5] bg-white p-3 hover:border-[#D4D4D4] transition-colors group"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium truncate">{source.name}</span>
+              <span className="text-xs text-[#A3A3A3] shrink-0">
+                {source.content.length.toLocaleString()} chars
+              </span>
+            </div>
+            <p className="text-xs text-[#737373] mt-1 line-clamp-2">
+              {preview}{source.content.length > 100 ? '...' : ''}
+            </p>
+          </div>
+          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            <button
+              onClick={() => startEditSource(source)}
+              className="p-1 text-[#A3A3A3] hover:text-black transition-colors"
+              title="Edit"
+            >
+              <Edit2 className="w-3 h-3" />
+            </button>
+            <button
+              onClick={() => handleDeleteSource(source.id)}
+              className="p-1 text-[#A3A3A3] hover:text-red-600 transition-colors"
+              title="Delete"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Render a category section
+  const renderCategory = (category: CategoryKey) => {
+    const config = CATEGORY_CONFIG[category]
+    const categorySources = filterSources(sourcesByCategory[category] || [])
+    const isExpanded = expandedCategories[category]
+    const Icon = config.icon
+
+    return (
+      <div key={category} className="border border-[#E5E5E5]">
+        <button
+          onClick={() => toggleCategory(category)}
+          className="w-full p-3 flex items-center justify-between hover:bg-[#FAFAFA] transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Icon className={`w-4 h-4 ${config.color}`} />
+            <span className="text-sm font-medium">{config.label}</span>
+            <span className="text-xs text-[#A3A3A3]">
+              ({categorySources.length})
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); openUploadModal(category) }}
+              className="text-xs text-[#737373] hover:text-black px-2 py-1 border border-[#E5E5E5] hover:border-[#D4D4D4]"
+            >
+              + Add
+            </button>
+            {isExpanded ? (
+              <ChevronUp className="w-4 h-4 text-[#A3A3A3]" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-[#A3A3A3]" />
+            )}
+          </div>
+        </button>
+
+        {isExpanded && (
+          <div className="border-t border-[#E5E5E5] p-3 bg-[#FAFAFA] space-y-2">
+            {categorySources.length === 0 ? (
+              <div className="border border-dashed border-[#E5E5E5] p-4 text-center bg-white">
+                <p className="text-xs text-[#A3A3A3]">{config.description}</p>
+                <button
+                  onClick={() => openUploadModal(category)}
+                  className="text-xs text-[#737373] hover:text-black mt-2 underline"
+                >
+                  Add {config.label.toLowerCase()}
+                </button>
+              </div>
+            ) : (
+              categorySources.map(renderSourceItem)
+            )}
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-[720px] mx-auto p-6 space-y-6">
+      <div className="max-w-[900px] mx-auto p-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold">Products</h2>
           <div className="flex gap-2">
             <button
@@ -190,140 +447,119 @@ export function Products({ products, onRefresh }: ProductsProps) {
           </div>
         </div>
 
-        {/* Products List */}
-        <div className="space-y-3">
-          {products.length === 0 ? (
-            <div className="border border-[#E5E5E5] p-8 text-center">
-              <p className="text-sm text-[#A3A3A3]">No products yet</p>
-              <p className="text-xs text-[#A3A3A3] mt-1">Add a product to start generating ads</p>
+        {products.length === 0 ? (
+          <div className="border border-[#E5E5E5] p-8 text-center">
+            <p className="text-sm text-[#A3A3A3]">No products yet</p>
+            <p className="text-xs text-[#A3A3A3] mt-1">Add a product to start generating ads</p>
+          </div>
+        ) : (
+          <div className="flex gap-6">
+            {/* Product Sidebar */}
+            <div className="w-48 shrink-0 space-y-2">
+              {products.map((product) => (
+                <button
+                  key={product.id}
+                  onClick={() => setSelectedProductId(product.id)}
+                  className={`w-full text-left p-3 border transition-colors ${
+                    selectedProductId === product.id
+                      ? 'border-black bg-white'
+                      : 'border-[#E5E5E5] hover:border-[#D4D4D4]'
+                  }`}
+                >
+                  <span className="text-sm font-medium block truncate">{product.name}</span>
+                  {product.landing_page_url && (
+                    <span className="text-xs text-[#A3A3A3] block truncate">
+                      {new URL(product.landing_page_url).hostname}
+                    </span>
+                  )}
+                </button>
+              ))}
             </div>
-          ) : (
-            products.map((product) => (
-              <div
-                key={product.id}
-                className="border border-[#E5E5E5]"
-              >
+
+            {/* Main Content */}
+            {selectedProduct && (
+              <div className="flex-1 space-y-4">
                 {/* Product Header */}
-                <div className="p-4 space-y-3">
+                <div className="border border-[#E5E5E5] p-4">
                   <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h3 className="font-medium">{product.name}</h3>
-                      {product.landing_page_url && (
+                    <div>
+                      <h3 className="font-semibold text-lg">{selectedProduct.name}</h3>
+                      {selectedProduct.landing_page_url && (
                         <a
-                          href={product.landing_page_url}
+                          href={selectedProduct.landing_page_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-[#737373] hover:underline"
+                          className="text-sm text-[#737373] hover:underline"
                         >
-                          {product.landing_page_url}
+                          {selectedProduct.landing_page_url}
                         </a>
                       )}
                     </div>
                     <div className="flex gap-1">
                       <button
-                        onClick={() => toggleExpanded(product.id)}
-                        className="p-1 text-[#A3A3A3] hover:text-black transition-colors"
-                      >
-                        {expandedProductId === product.id ? (
-                          <ChevronUp className="w-4 h-4" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => openEditModal(product)}
-                        className="p-1 text-[#A3A3A3] hover:text-black transition-colors"
+                        onClick={() => openEditModal(selectedProduct)}
+                        className="p-2 text-[#A3A3A3] hover:text-black transition-colors"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(product.id)}
-                        className="p-1 text-[#A3A3A3] hover:text-black transition-colors"
+                        onClick={() => handleDelete(selectedProduct.id)}
+                        className="p-2 text-[#A3A3A3] hover:text-red-600 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
-
-                  {product.mechanism && (
-                    <div>
-                      <span className="text-xs text-[#737373] uppercase tracking-wide">Mechanism</span>
-                      <p className="text-sm mt-1 whitespace-pre-wrap line-clamp-3">{product.mechanism}</p>
-                    </div>
-                  )}
-
-                  {product.ingredients && (
-                    <div>
-                      <span className="text-xs text-[#737373] uppercase tracking-wide">Ingredients</span>
-                      <p className="text-sm mt-1 whitespace-pre-wrap line-clamp-2">{product.ingredients}</p>
-                    </div>
-                  )}
                 </div>
 
-                {/* Expanded Data Sources Section */}
-                {expandedProductId === product.id && (
-                  <div className="border-t border-[#E5E5E5] p-4 bg-[#FAFAFA]">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs font-medium text-[#737373] uppercase tracking-wide">
-                        Data Sources ({productSources[product.id]?.length || 0})
-                      </span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => openSourceModal(product.id, 'file')}
-                          className="flex items-center gap-1 px-2 py-1 text-xs border border-[#E5E5E5] hover:border-[#D4D4D4] transition-colors"
-                        >
-                          <Upload className="w-3 h-3" />
-                          Upload
-                        </button>
-                        <button
-                          onClick={() => openSourceModal(product.id, 'text')}
-                          className="flex items-center gap-1 px-2 py-1 text-xs border border-[#E5E5E5] hover:border-[#D4D4D4] transition-colors"
-                        >
-                          <FileText className="w-3 h-3" />
-                          Paste
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Naming hint */}
-                    <p className="text-xs text-[#A3A3A3] mb-3">
-                      Name tips: "metrics" = performance data | "reviews" = customer reviews | "survey" = survey data
-                    </p>
-
-                    {/* Sources List */}
-                    {!productSources[product.id] || productSources[product.id].length === 0 ? (
-                      <div className="border border-[#E5E5E5] border-dashed p-4 text-center bg-white">
-                        <p className="text-xs text-[#A3A3A3]">No data sources for this product</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {productSources[product.id].map((source) => (
-                          <div
-                            key={source.id}
-                            className="border border-[#E5E5E5] bg-white p-2 flex items-center justify-between"
-                          >
-                            <div>
-                              <span className="text-sm">{source.name}</span>
-                              <span className="text-xs text-[#A3A3A3] ml-2">
-                                {source.content.length.toLocaleString()} chars
-                              </span>
-                            </div>
-                            <button
-                              onClick={() => handleDeleteSource(source.id, product.id)}
-                              className="p-1 text-[#A3A3A3] hover:text-black transition-colors"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                {/* Quick Add */}
+                <div className="border border-[#E5E5E5] p-4 bg-amber-50/50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-medium">Quick Add</span>
                   </div>
-                )}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={quickAddContent}
+                      onChange={(e) => setQuickAddContent(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleQuickAdd()}
+                      placeholder="Paste hook, angle, or idea... (press Enter)"
+                      className="flex-1 h-9 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black bg-white"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleQuickAdd}
+                      disabled={!quickAddContent.trim() || quickAddSubmitting}
+                    >
+                      {quickAddSubmitting ? '...' : 'Add'}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-[#A3A3A3] mt-2">
+                    Short content → Hook | Long content → Copy Example | Auto-detected
+                  </p>
+                </div>
+
+                {/* Search */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3A3A3]" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search all content..."
+                    className="w-full h-9 pl-9 pr-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
+                  />
+                </div>
+
+                {/* Category Sections */}
+                <div className="space-y-3">
+                  {(['hook', 'example', 'reviews', 'survey', 'document'] as CategoryKey[]).map(renderCategory)}
+                </div>
               </div>
-            ))
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Hidden file input */}
@@ -356,7 +592,7 @@ export function Products({ products, onRefresh }: ProductsProps) {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., NUORA"
+                  placeholder="e.g., NUORA GUMMIES"
                   className="w-full h-9 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
                 />
               </div>
@@ -374,22 +610,20 @@ export function Products({ products, onRefresh }: ProductsProps) {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Mechanism</label>
-                <p className="text-xs text-[#737373]">Problem/solution mechanism explanation</p>
                 <textarea
                   value={mechanism}
                   onChange={(e) => setMechanism(e.target.value)}
-                  placeholder="PROBLEM MECHANISM:&#10;Why does the problem exist?&#10;&#10;SOLUTION MECHANISM:&#10;Why does the solution work?"
+                  placeholder="Problem mechanism: Why does the problem exist?&#10;Solution mechanism: Why does the solution work?"
                   className="w-full h-32 p-3 border border-[#E5E5E5] text-sm resize-none focus:outline-none focus:border-black"
                 />
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Ingredients</label>
-                <p className="text-xs text-[#737373]">Key ingredients and their benefits</p>
                 <textarea
                   value={ingredients}
                   onChange={(e) => setIngredients(e.target.value)}
-                  placeholder="List key ingredients and what they do..."
+                  placeholder="Key ingredients and their benefits..."
                   className="w-full h-24 p-3 border border-[#E5E5E5] text-sm resize-none focus:outline-none focus:border-black"
                 />
               </div>
@@ -415,16 +649,14 @@ export function Products({ products, onRefresh }: ProductsProps) {
         </div>
       )}
 
-      {/* Data Source Modal */}
-      {sourceModalOpen && (
+      {/* Upload Modal */}
+      {uploadModalOpen && (
         <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
-          <div className="bg-white border border-[#E5E5E5] w-full max-w-lg m-4">
+          <div className="bg-white border border-[#E5E5E5] w-full max-w-lg m-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-[#E5E5E5]">
-              <h3 className="font-medium">
-                {sourceMode === 'file' ? 'Upload File' : 'Paste Text'}
-              </h3>
+              <h3 className="font-medium">Add {CATEGORY_CONFIG[uploadCategory].label}</h3>
               <button
-                onClick={() => setSourceModalOpen(false)}
+                onClick={() => setUploadModalOpen(false)}
                 className="text-[#A3A3A3] hover:text-black"
               >
                 <X className="w-4 h-4" />
@@ -433,58 +665,67 @@ export function Products({ products, onRefresh }: ProductsProps) {
 
             <div className="p-4 space-y-4">
               <div className="space-y-2">
+                <label className="text-sm font-medium">Category</label>
+                <select
+                  value={uploadCategory}
+                  onChange={(e) => setUploadCategory(e.target.value as CategoryKey)}
+                  className="w-full h-9 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black bg-white"
+                >
+                  {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
+                    <option key={key} value={key}>{config.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Name</label>
                 <input
                   type="text"
-                  value={sourceName}
-                  onChange={(e) => setSourceName(e.target.value)}
-                  placeholder="e.g., December Metrics, Customer Reviews"
+                  value={uploadName}
+                  onChange={(e) => setUploadName(e.target.value)}
+                  placeholder="e.g., Customer Reviews December"
                   className="w-full h-9 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
                 />
               </div>
 
-              {sourceMode === 'file' ? (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">File</label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Content</label>
                   <Button
                     variant="outline"
-                    className="w-full"
+                    size="sm"
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    <Upload className="w-4 h-4 mr-2" />
-                    {sourceContent ? 'Change File' : 'Choose File'}
+                    <Upload className="w-3 h-3 mr-1" />
+                    Upload File
                   </Button>
-                  {sourceContent && (
-                    <p className="text-xs text-[#737373]">
-                      Loaded: {sourceContent.split('\n').length} lines
-                      {sourceFileType && ` (${sourceFileType.toUpperCase()})`}
-                    </p>
-                  )}
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Content</label>
-                  <textarea
-                    value={sourceContent}
-                    onChange={(e) => setSourceContent(e.target.value)}
-                    placeholder="Paste your content here..."
-                    className="w-full h-48 p-3 border border-[#E5E5E5] text-sm resize-none focus:outline-none focus:border-black"
-                  />
-                </div>
-              )}
+                <textarea
+                  value={uploadContent}
+                  onChange={(e) => setUploadContent(e.target.value)}
+                  placeholder="Paste content or upload a file..."
+                  className="w-full h-48 p-3 border border-[#E5E5E5] text-sm resize-none focus:outline-none focus:border-black font-mono"
+                />
+                {uploadContent && (
+                  <p className="text-xs text-[#737373]">
+                    {uploadContent.length.toLocaleString()} characters
+                    {uploadFileType && ` • ${uploadFileType.toUpperCase()}`}
+                  </p>
+                )}
+              </div>
 
               <div className="flex gap-3 pt-2">
                 <Button
                   variant="outline"
                   className="flex-1"
-                  onClick={() => setSourceModalOpen(false)}
+                  onClick={() => setUploadModalOpen(false)}
                 >
                   Cancel
                 </Button>
                 <Button
                   className="flex-1"
-                  onClick={handleAddSource}
-                  disabled={!sourceName.trim() || !sourceContent.trim() || isSubmitting}
+                  onClick={handleUploadSubmit}
+                  disabled={!uploadName.trim() || !uploadContent.trim() || isSubmitting}
                 >
                   {isSubmitting ? 'Adding...' : 'Add'}
                 </Button>
