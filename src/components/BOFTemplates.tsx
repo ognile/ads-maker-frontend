@@ -31,7 +31,7 @@ async function fetchTemplates(): Promise<BOFTemplate[]> {
   return res.json()
 }
 
-async function createTemplate(data: { name: string; template_data: string; description?: string }): Promise<BOFTemplate> {
+async function createTemplate(data: { name: string; image_data: string; description?: string }): Promise<BOFTemplate> {
   const res = await authFetch(`${API_BASE}/bof-templates`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -116,7 +116,7 @@ export function BOFTemplates() {
 
     createMutation.mutate({
       name: uploadName.trim(),
-      template_data: uploadData,
+      image_data: uploadData,
       description: uploadDescription.trim() || undefined,
     })
   }
