@@ -20,6 +20,7 @@ interface Swipe {
   video_url?: string
   tags?: string[]
   category?: string
+  funnel_position?: 'TOF' | 'BOF' | 'all'
   times_referenced: number
   created_at: string
   metadata?: {
@@ -46,6 +47,7 @@ interface Job {
 }
 
 type SwipeTypeFilter = 'all' | 'ad_text' | 'ad_image' | 'ad_video' | 'landing_page' | 'raw_text'
+type FunnelFilter = 'all' | 'TOF' | 'BOF'
 type AddMode = 'url' | 'text' | 'file'
 
 interface AdFormat {
@@ -60,6 +62,7 @@ export function SwipeFile() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [typeFilter, setTypeFilter] = useState<SwipeTypeFilter>('all')
+  const [funnelFilter, setFunnelFilter] = useState<FunnelFilter>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const toast = useToast()
 
@@ -82,6 +85,7 @@ export function SwipeFile() {
   const [isEditing, setIsEditing] = useState(false)
   const [editedTranscript, setEditedTranscript] = useState('')
   const [editedName, setEditedName] = useState('')
+  const [editedFunnelPosition, setEditedFunnelPosition] = useState<'TOF' | 'BOF' | 'all'>('all')
   const [isSaving, setIsSaving] = useState(false)
 
   // Format selector modal state
@@ -172,7 +176,7 @@ export function SwipeFile() {
   useEffect(() => {
     fetchSwipes()
     fetchJobs()
-  }, [typeFilter])
+  }, [typeFilter, funnelFilter])
 
   const fetchSwipes = async () => {
     setIsLoading(true)
@@ -180,6 +184,9 @@ export function SwipeFile() {
       const params = new URLSearchParams()
       if (typeFilter !== 'all') {
         params.set('swipe_type', typeFilter)
+      }
+      if (funnelFilter !== 'all') {
+        params.set('funnel_position', funnelFilter)
       }
       params.set('limit', '100')
 
@@ -349,6 +356,7 @@ export function SwipeFile() {
     if (selectedSwipe) {
       setEditedName(selectedSwipe.name)
       setEditedTranscript(selectedSwipe.transcript || '')
+      setEditedFunnelPosition(selectedSwipe.funnel_position || 'all')
       setIsEditing(true)
     }
   }
@@ -357,6 +365,7 @@ export function SwipeFile() {
     setIsEditing(false)
     setEditedName('')
     setEditedTranscript('')
+    setEditedFunnelPosition('all')
   }
 
   const handleSaveEdit = async () => {
@@ -370,6 +379,7 @@ export function SwipeFile() {
         body: JSON.stringify({
           name: editedName,
           transcript: editedTranscript,
+          funnel_position: editedFunnelPosition,
         }),
       })
 
@@ -479,6 +489,23 @@ export function SwipeFile() {
     }
   }
 
+  const getFunnelLabel = (funnel: string | undefined) => {
+    switch (funnel) {
+      case 'TOF': return 'TOF'
+      case 'BOF': return 'BOF'
+      case 'all': return 'All Funnels'
+      default: return 'All Funnels'
+    }
+  }
+
+  const getFunnelColor = (funnel: string | undefined) => {
+    switch (funnel) {
+      case 'TOF': return 'bg-cyan-100 text-cyan-800'
+      case 'BOF': return 'bg-amber-100 text-amber-800'
+      default: return 'bg-gray-100 text-gray-600'
+    }
+  }
+
   const filteredSwipes = swipes.filter(swipe => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
@@ -512,30 +539,53 @@ export function SwipeFile() {
         </div>
 
         {/* Filters */}
-        <div className="flex gap-4 items-center">
-          <div className="flex gap-1">
-            {(['all', 'ad_text', 'ad_image', 'ad_video', 'landing_page', 'raw_text'] as const).map(type => (
-              <button
-                key={type}
-                onClick={() => setTypeFilter(type)}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  typeFilter === type
-                    ? 'bg-black text-white'
-                    : 'bg-[#F5F5F5] text-[#737373] hover:bg-[#E5E5E5]'
-                }`}
-              >
-                {type === 'all' ? 'All' : getTypeLabel(type)}
-              </button>
-            ))}
-          </div>
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-4 items-center">
+            <div className="flex gap-1">
+              {(['all', 'ad_text', 'ad_image', 'ad_video', 'landing_page', 'raw_text'] as const).map(type => (
+                <button
+                  key={type}
+                  onClick={() => setTypeFilter(type)}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                    typeFilter === type
+                      ? 'bg-black text-white'
+                      : 'bg-[#F5F5F5] text-[#737373] hover:bg-[#E5E5E5]'
+                  }`}
+                >
+                  {type === 'all' ? 'All' : getTypeLabel(type)}
+                </button>
+              ))}
+            </div>
 
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search swipes..."
-            className="flex-1 h-8 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
-          />
+            <div className="w-px h-6 bg-[#E5E5E5]" />
+
+            {/* Funnel Filter */}
+            <div className="flex gap-1">
+              {(['all', 'TOF', 'BOF'] as const).map(funnel => (
+                <button
+                  key={funnel}
+                  onClick={() => setFunnelFilter(funnel)}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                    funnelFilter === funnel
+                      ? funnel === 'TOF' ? 'bg-cyan-600 text-white'
+                        : funnel === 'BOF' ? 'bg-amber-600 text-white'
+                        : 'bg-black text-white'
+                      : 'bg-[#F5F5F5] text-[#737373] hover:bg-[#E5E5E5]'
+                  }`}
+                >
+                  {funnel === 'all' ? 'All Funnels' : funnel}
+                </button>
+              ))}
+            </div>
+
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search swipes..."
+              className="flex-1 h-8 px-3 border border-[#E5E5E5] text-sm focus:outline-none focus:border-black"
+            />
+          </div>
         </div>
 
         {/* Info */}
@@ -605,6 +655,11 @@ export function SwipeFile() {
                   <span className={`absolute top-2 left-2 px-1.5 py-0.5 text-[10px] font-medium ${getTypeColor(swipe.swipe_type)}`}>
                     {getTypeLabel(swipe.swipe_type)}
                   </span>
+                  {swipe.funnel_position && swipe.funnel_position !== 'all' && (
+                    <span className={`absolute top-2 right-2 px-1.5 py-0.5 text-[10px] font-medium ${getFunnelColor(swipe.funnel_position)}`}>
+                      {swipe.funnel_position}
+                    </span>
+                  )}
                 </div>
 
                 {/* Info */}
@@ -830,6 +885,11 @@ export function SwipeFile() {
                 <span className={`px-2 py-1 text-xs font-medium ${getTypeColor(selectedSwipe.swipe_type)}`}>
                   {getTypeLabel(selectedSwipe.swipe_type)}
                 </span>
+                {selectedSwipe.funnel_position && selectedSwipe.funnel_position !== 'all' && (
+                  <span className={`px-2 py-1 text-xs font-medium ${getFunnelColor(selectedSwipe.funnel_position)}`}>
+                    {selectedSwipe.funnel_position}
+                  </span>
+                )}
               </div>
               <button
                 onClick={() => {
@@ -900,6 +960,39 @@ export function SwipeFile() {
                   ))}
                 </div>
               )}
+
+              {/* Funnel Position */}
+              <div>
+                <span className="text-xs font-medium text-[#737373] uppercase">Funnel Position</span>
+                {isEditing ? (
+                  <div className="mt-2 flex gap-2">
+                    {(['all', 'TOF', 'BOF'] as const).map(funnel => (
+                      <button
+                        key={funnel}
+                        onClick={() => setEditedFunnelPosition(funnel)}
+                        className={`px-4 py-2 text-sm font-medium border transition-colors ${
+                          editedFunnelPosition === funnel
+                            ? funnel === 'TOF' ? 'bg-cyan-600 text-white border-cyan-600'
+                              : funnel === 'BOF' ? 'bg-amber-600 text-white border-amber-600'
+                              : 'bg-black text-white border-black'
+                            : 'bg-white text-[#737373] border-[#E5E5E5] hover:border-[#D4D4D4]'
+                        }`}
+                      >
+                        {funnel === 'all' ? 'All Funnels' : funnel}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-2">
+                    <span className={`inline-block px-3 py-1 text-sm font-medium ${getFunnelColor(selectedSwipe.funnel_position)}`}>
+                      {getFunnelLabel(selectedSwipe.funnel_position)}
+                    </span>
+                  </div>
+                )}
+                <p className="mt-1 text-xs text-[#A3A3A3]">
+                  TOF = examples for top-of-funnel copy, BOF = bottom-of-funnel copy
+                </p>
+              </div>
 
               {/* Transcript */}
               {(selectedSwipe.transcript || isEditing) && (
