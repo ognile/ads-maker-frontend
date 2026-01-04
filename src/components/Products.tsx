@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { RefreshCw, Trash2, Plus, X, Edit2, Upload, ChevronDown, ChevronUp, Search, Zap, FileText, Users, BookOpen, Lightbulb, Check, Image } from 'lucide-react'
+import { RefreshCw, Trash2, Plus, X, Edit2, Upload, ChevronDown, ChevronUp, Search, Zap, FileText, Users, BookOpen, Lightbulb, Check, Image, Palette, Tag } from 'lucide-react'
 import { Button } from './ui/button'
 import type { Product, DataSource } from '../App'
 
@@ -13,10 +13,10 @@ import { authFetch } from '../auth'
 
 // Extended DataSource with category
 interface CategorizedDataSource extends DataSource {
-  category: 'hook' | 'example' | 'reviews' | 'survey' | 'document'
+  category: 'hook' | 'example' | 'reviews' | 'survey' | 'document' | 'brand_guide' | 'offers'
 }
 
-type CategoryKey = 'hook' | 'example' | 'reviews' | 'survey' | 'document'
+type CategoryKey = 'hook' | 'example' | 'reviews' | 'survey' | 'document' | 'brand_guide' | 'offers'
 
 const CATEGORY_CONFIG: Record<CategoryKey, { label: string; icon: typeof Lightbulb; color: string; description: string }> = {
   hook: { label: 'Hooks & Angles', icon: Zap, color: 'text-amber-600', description: 'One-liners, openers, viral concepts' },
@@ -24,6 +24,8 @@ const CATEGORY_CONFIG: Record<CategoryKey, { label: string; icon: typeof Lightbu
   reviews: { label: 'Customer Reviews', icon: Users, color: 'text-green-600', description: 'Customer testimonials' },
   survey: { label: 'Survey Data', icon: Users, color: 'text-purple-600', description: 'Desires & experiences' },
   document: { label: 'Documents', icon: BookOpen, color: 'text-gray-600', description: 'Mechanism, metrics, other' },
+  brand_guide: { label: 'Brand Style Guide', icon: Palette, color: 'text-pink-600', description: 'Fonts, colors, visual rules for BOF ads' },
+  offers: { label: 'Current Offers', icon: Tag, color: 'text-red-600', description: 'Active promotions, discounts, bundles' },
 }
 
 export function Products({ products, onRefresh }: ProductsProps) {
@@ -50,6 +52,8 @@ export function Products({ products, onRefresh }: ProductsProps) {
     reviews: false,
     survey: false,
     document: false,
+    brand_guide: true,
+    offers: true,
   })
 
   // Edit source state
@@ -654,7 +658,7 @@ export function Products({ products, onRefresh }: ProductsProps) {
 
                 {/* Category Sections */}
                 <div className="space-y-3">
-                  {(['hook', 'example', 'reviews', 'survey', 'document'] as CategoryKey[]).map(renderCategory)}
+                  {(['brand_guide', 'offers', 'hook', 'example', 'reviews', 'survey', 'document'] as CategoryKey[]).map(renderCategory)}
                 </div>
               </div>
             )}
