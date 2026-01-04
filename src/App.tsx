@@ -94,6 +94,7 @@ export interface Product {
   landing_page_url?: string
   mechanism?: string
   ingredients?: string
+  image_urls?: string[]
   created_at: string
   updated_at: string
 }

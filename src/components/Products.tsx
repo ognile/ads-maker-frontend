@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { RefreshCw, Trash2, Plus, X, Edit2, Upload, ChevronDown, ChevronUp, Search, Zap, FileText, Users, BookOpen, Lightbulb, Check } from 'lucide-react'
+import { RefreshCw, Trash2, Plus, X, Edit2, Upload, ChevronDown, ChevronUp, Search, Zap, FileText, Users, BookOpen, Lightbulb, Check, Image } from 'lucide-react'
 import { Button } from './ui/button'
 import type { Product, DataSource } from '../App'
 
@@ -67,6 +67,10 @@ export function Products({ products, onRefresh }: ProductsProps) {
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
+
+  // Product image upload state
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const productImageInputRef = useRef<HTMLInputElement>(null)
 
   // Auto-select first product
   useEffect(() => {
@@ -169,6 +173,44 @@ export function Products({ products, onRefresh }: ProductsProps) {
       if (selectedProductId === id) {
         setSelectedProductId(products.find(p => p.id !== id)?.id || null)
       }
+      onRefresh()
+    }
+  }
+
+  // Product image handlers
+  const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0] || !selectedProductId) return
+
+    const file = e.target.files[0]
+    const reader = new FileReader()
+
+    reader.onload = async (event) => {
+      setUploadingImage(true)
+      try {
+        const res = await authFetch(`${API_BASE}/products/${selectedProductId}/images`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_data: event.target?.result }),
+        })
+        if (res.ok) {
+          onRefresh()
+        }
+      } finally {
+        setUploadingImage(false)
+        if (productImageInputRef.current) {
+          productImageInputRef.current.value = ''
+        }
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleRemoveProductImage = async (index: number) => {
+    if (!selectedProductId) return
+    const res = await authFetch(`${API_BASE}/products/${selectedProductId}/images/${index}`, {
+      method: 'DELETE',
+    })
+    if (res.ok) {
       onRefresh()
     }
   }
@@ -513,6 +555,62 @@ export function Products({ products, onRefresh }: ProductsProps) {
                     </div>
                   </div>
                 </div>
+
+                {/* Product Hero Images (for BOF ads) */}
+                <div className="border border-[#E5E5E5] p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Image className="w-4 h-4 text-purple-600" />
+                      <span className="text-sm font-medium">Product Images</span>
+                      <span className="text-xs text-[#A3A3A3]">(for BOF ads)</span>
+                    </div>
+                    {(selectedProduct.image_urls?.length || 0) < 3 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => productImageInputRef.current?.click()}
+                        disabled={uploadingImage}
+                      >
+                        <Upload className="w-3 h-3 mr-1" />
+                        {uploadingImage ? 'Uploading...' : 'Upload'}
+                      </Button>
+                    )}
+                  </div>
+
+                  {selectedProduct.image_urls && selectedProduct.image_urls.length > 0 ? (
+                    <div className="flex gap-3 flex-wrap">
+                      {selectedProduct.image_urls.map((url, index) => (
+                        <div key={index} className="relative group">
+                          <img
+                            src={url}
+                            alt={`Product image ${index + 1}`}
+                            className="w-24 h-24 object-cover border border-[#E5E5E5]"
+                          />
+                          <button
+                            onClick={() => handleRemoveProductImage(index)}
+                            className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="border border-dashed border-[#E5E5E5] p-4 text-center">
+                      <p className="text-xs text-[#A3A3A3]">No hero images yet</p>
+                      <p className="text-xs text-[#A3A3A3] mt-1">Upload 1-3 product images for BOF ad generation</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Hidden product image input */}
+                <input
+                  type="file"
+                  ref={productImageInputRef}
+                  onChange={handleProductImageUpload}
+                  accept="image/*"
+                  className="hidden"
+                />
 
                 {/* Quick Add */}
                 <div className="border border-[#E5E5E5] p-4 bg-amber-50/50">

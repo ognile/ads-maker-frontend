@@ -31,6 +31,12 @@ interface AutonomousSetting {
   options?: string[]
 }
 
+interface FunnelStatus {
+  daily_target: number
+  concepts_today: number
+  remaining: number
+}
+
 interface AutonomousStatus {
   enabled: boolean
   daily_target: number
@@ -40,6 +46,8 @@ interface AutonomousStatus {
   pending_jobs: number
   auto_approval_enabled: boolean
   diversity_enabled: boolean
+  tof?: FunnelStatus
+  bof?: FunnelStatus
 }
 
 async function fetchSettings(): Promise<Record<string, AutonomousSetting>> {
@@ -241,12 +249,29 @@ export function AutonomousSettings() {
 
             {isEnabled && status && (
               <>
-                <div className="text-sm">
-                  <span className="text-[#737373]">Today:</span>{' '}
-                  <span className="font-medium">
-                    {status.concepts_today}/{status.daily_target}
-                  </span>
-                </div>
+                {status.tof && status.bof ? (
+                  <>
+                    <div className="text-sm">
+                      <span className="text-[#737373]">TOF:</span>{' '}
+                      <span className="font-medium">
+                        {status.tof.concepts_today}/{status.tof.daily_target}
+                      </span>
+                    </div>
+                    <div className="text-sm">
+                      <span className="text-[#737373]">BOF:</span>{' '}
+                      <span className="font-medium">
+                        {status.bof.concepts_today}/{status.bof.daily_target}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm">
+                    <span className="text-[#737373]">Today:</span>{' '}
+                    <span className="font-medium">
+                      {status.concepts_today}/{status.daily_target}
+                    </span>
+                  </div>
+                )}
 
                 {status.pending_jobs > 0 && (
                   <div className="text-sm">

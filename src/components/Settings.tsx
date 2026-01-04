@@ -6,6 +6,7 @@ import { AdvancedSettings } from './AdvancedSettings'
 import { AutonomousSettings } from './AutonomousSettings'
 import { FormatsSection } from './FormatsSection'
 import { UsageTracking } from './UsageTracking'
+import { BOFTemplates } from './BOFTemplates'
 
 interface SettingsData {
   image_generation_enabled: boolean
@@ -641,6 +642,14 @@ export function Settings() {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* BOF Style Templates */}
+          <div className="border border-[#E5E5E5] p-4">
+            <h3 className="text-xs font-medium text-[#737373] uppercase tracking-wide mb-4">
+              BOF Ad Generation
+            </h3>
+            <BOFTemplates />
           </div>
 
           {/* Autonomous Mode */}
