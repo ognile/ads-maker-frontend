@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { RefreshCw, Plus, X, Link, Trash2, ExternalLink, Tag, Copy, Check, Loader2, FileText, Upload, Pencil, Save } from 'lucide-react'
+import { RefreshCw, Plus, X, Link, Trash2, ExternalLink, Tag, Copy, Check, Loader2, FileText, Upload, Pencil, Save, FolderPlus } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from './ui/toast'
 import ReactMarkdown from 'react-markdown'
@@ -48,6 +48,13 @@ interface Job {
 type SwipeTypeFilter = 'all' | 'ad_text' | 'ad_image' | 'ad_video' | 'landing_page' | 'raw_text'
 type AddMode = 'url' | 'text' | 'file'
 
+interface AdFormat {
+  format_id: string
+  name: string
+  description: string
+  linked_swipe_ids: string[]
+}
+
 export function SwipeFile() {
   const [swipes, setSwipes] = useState<Swipe[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
@@ -76,6 +83,11 @@ export function SwipeFile() {
   const [editedTranscript, setEditedTranscript] = useState('')
   const [editedName, setEditedName] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+
+  // Format selector modal state
+  const [showFormatSelector, setShowFormatSelector] = useState(false)
+  const [formats, setFormats] = useState<AdFormat[]>([])
+  const [isLinkingSwipe, setIsLinkingSwipe] = useState(false)
 
   // WebSocket ref
   const wsRef = useRef<WebSocket | null>(null)
@@ -384,6 +396,47 @@ export function SwipeFile() {
     setSaveTags([])
     setTagInput('')
     setAddMode('url')
+  }
+
+  const fetchFormats = async () => {
+    try {
+      const res = await authFetch(`${API_BASE}/settings/formats`)
+      if (res.ok) {
+        const data = await res.json()
+        setFormats(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch formats:', error)
+    }
+  }
+
+  const handleLinkToFormat = async (formatId: string) => {
+    if (!selectedSwipe) return
+
+    setIsLinkingSwipe(true)
+    try {
+      const res = await authFetch(
+        `${API_BASE}/settings/formats/${formatId}/link-swipe?swipe_id=${selectedSwipe.id}`,
+        { method: 'POST' }
+      )
+      if (res.ok) {
+        const formatName = formats.find(f => f.format_id === formatId)?.name || formatId
+        toast.success(`Linked to ${formatName}`)
+        setShowFormatSelector(false)
+      } else {
+        toast.error('Failed to link swipe')
+      }
+    } catch (error) {
+      console.error('Failed to link swipe:', error)
+      toast.error('Failed to link swipe')
+    } finally {
+      setIsLinkingSwipe(false)
+    }
+  }
+
+  const openFormatSelector = () => {
+    fetchFormats()
+    setShowFormatSelector(true)
   }
 
   const addTag = () => {
@@ -913,7 +966,13 @@ export function SwipeFile() {
                     </Button>
                     <Button
                       variant="outline"
-                      className="flex-1"
+                      onClick={openFormatSelector}
+                    >
+                      <FolderPlus className="w-4 h-4 mr-2" />
+                      Add to Format
+                    </Button>
+                    <Button
+                      variant="outline"
                       onClick={() => copyReferenceCode(selectedSwipe.reference_code)}
                     >
                       <Copy className="w-4 h-4 mr-2" />
@@ -930,6 +989,58 @@ export function SwipeFile() {
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Format Selector Modal */}
+      {showFormatSelector && (
+        <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-[60]">
+          <div className="bg-white border border-[#E5E5E5] w-full max-w-md m-4">
+            <div className="flex items-center justify-between p-4 border-b border-[#E5E5E5]">
+              <h3 className="font-medium">Add to Format</h3>
+              <button
+                onClick={() => setShowFormatSelector(false)}
+                className="text-[#A3A3A3] hover:text-black"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
+              {formats.length === 0 ? (
+                <p className="text-sm text-[#737373] text-center py-4">No formats found</p>
+              ) : (
+                formats.map(format => {
+                  const isLinked = format.linked_swipe_ids?.includes(selectedSwipe?.id || '')
+                  return (
+                    <button
+                      key={format.format_id}
+                      onClick={() => !isLinked && handleLinkToFormat(format.format_id)}
+                      disabled={isLinkingSwipe || isLinked}
+                      className={`w-full text-left p-3 border transition-colors ${
+                        isLinked
+                          ? 'border-green-200 bg-green-50 cursor-default'
+                          : 'border-[#E5E5E5] hover:border-black'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-sm">{format.name}</div>
+                          {format.description && (
+                            <div className="text-xs text-[#737373] mt-0.5">{format.description}</div>
+                          )}
+                        </div>
+                        {isLinked && (
+                          <span className="text-xs text-green-600 flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Linked
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  )
+                })
+              )}
             </div>
           </div>
         </div>

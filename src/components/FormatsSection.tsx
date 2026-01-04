@@ -25,11 +25,16 @@ interface AdFormat {
   format_id: string
   name: string
   description: string | null
+  // New simplified schema
+  prompt: string | null
+  text_examples: string | null
+  // Old schema (deprecated, for backward compat)
   structure: string
   voice_notes: string | null
   pacing: string | null
   do_list: string[]
   dont_list: string[]
+  // Shared fields
   linked_swipe_ids: string[]
   reference_image_urls: string[]
   is_active: boolean
@@ -178,7 +183,12 @@ function FormatCard({
           <ImageIcon className="w-3 h-3" />
           {format.reference_image_urls?.length || 0} images
         </span>
-        <span>{format.do_list?.length || 0} do's</span>
+        {format.text_examples && (
+          <span className="flex items-center gap-1">
+            <FileText className="w-3 h-3" />
+            has examples
+          </span>
+        )}
       </div>
 
       <div className="flex gap-2">
@@ -337,16 +347,13 @@ function FormatEditorModal({
     format_id: format?.format_id || '',
     name: format?.name || '',
     description: format?.description || '',
-    structure: format?.structure || '',
-    voice_notes: format?.voice_notes || '',
-    pacing: format?.pacing || '',
-    do_list: format?.do_list || [],
-    dont_list: format?.dont_list || [],
+    // New simplified fields
+    prompt: format?.prompt || '',
+    text_examples: format?.text_examples || '',
+    // Keep for backward compat
     linked_swipe_ids: format?.linked_swipe_ids || [],
     reference_image_urls: format?.reference_image_urls || [],
   })
-  const [newDoItem, setNewDoItem] = useState('')
-  const [newDontItem, setNewDontItem] = useState('')
   const [showSwipeSelector, setShowSwipeSelector] = useState(false)
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
@@ -469,40 +476,6 @@ function FormatEditorModal({
     [format, toast]
   )
 
-  const handleAddDoItem = () => {
-    if (newDoItem.trim()) {
-      setFormData({
-        ...formData,
-        do_list: [...formData.do_list, newDoItem.trim()],
-      })
-      setNewDoItem('')
-    }
-  }
-
-  const handleAddDontItem = () => {
-    if (newDontItem.trim()) {
-      setFormData({
-        ...formData,
-        dont_list: [...formData.dont_list, newDontItem.trim()],
-      })
-      setNewDontItem('')
-    }
-  }
-
-  const handleRemoveDoItem = (index: number) => {
-    setFormData({
-      ...formData,
-      do_list: formData.do_list.filter((_, i) => i !== index),
-    })
-  }
-
-  const handleRemoveDontItem = (index: number) => {
-    setFormData({
-      ...formData,
-      dont_list: formData.dont_list.filter((_, i) => i !== index),
-    })
-  }
-
   return (
     <>
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -572,131 +545,70 @@ function FormatEditorModal({
               />
             </div>
 
-            {/* Structure */}
+            {/* Prompt - All instructions in one place */}
             <div>
               <label className="block text-xs font-medium text-[#737373] mb-1">
-                Structure (Step-by-step how to write in this format)
+                Prompt (All format instructions)
               </label>
               <textarea
-                value={formData.structure}
+                value={formData.prompt}
                 onChange={(e) =>
-                  setFormData({ ...formData, structure: e.target.value })
+                  setFormData({ ...formData, prompt: e.target.value })
                 }
-                className="w-full h-64 px-3 py-2 text-sm font-mono border border-[#E5E5E5] rounded focus:outline-none focus:border-black resize-none"
-                placeholder="1. OPENING (2-3 paragraphs)&#10;Start with...&#10;&#10;2. THE PROBLEM&#10;Show the issue through..."
+                className="w-full h-80 px-3 py-2 text-sm font-mono border border-[#E5E5E5] rounded focus:outline-none focus:border-black resize-none"
+                placeholder="# STRUCTURE
+1. OPENING (2-3 paragraphs)
+Start with who she is...
+
+2. THE PROBLEM
+Show the issue through specific scenes...
+
+# VOICE
+- Raw, emotional
+- Casual language like texting a friend
+- Fragment sentences OK
+
+# PACING
+- 60% story before solution
+- Problem by paragraph 3
+
+# DO
+→ Use specific numbers
+→ Include partner dialogue
+
+# DONT
+❌ No hype words
+❌ No testimonials"
               />
+              <p className="text-xs text-[#A3A3A3] mt-1">
+                Include structure, voice, pacing, do's and don'ts all in one prompt
+              </p>
             </div>
 
-            {/* Voice & Pacing */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-[#737373] mb-1">
-                  Voice Notes
-                </label>
-                <textarea
-                  value={formData.voice_notes}
-                  onChange={(e) =>
-                    setFormData({ ...formData, voice_notes: e.target.value })
-                  }
-                  className="w-full h-32 px-3 py-2 text-sm border border-[#E5E5E5] rounded focus:outline-none focus:border-black resize-none"
-                  placeholder="How it should sound...&#10;- Raw, emotional&#10;- Casual language"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-[#737373] mb-1">
-                  Pacing
-                </label>
-                <textarea
-                  value={formData.pacing}
-                  onChange={(e) =>
-                    setFormData({ ...formData, pacing: e.target.value })
-                  }
-                  className="w-full h-32 px-3 py-2 text-sm border border-[#E5E5E5] rounded focus:outline-none focus:border-black resize-none"
-                  placeholder="When to reveal what...&#10;- 60% story before solution&#10;- Problem by paragraph 3"
-                />
-              </div>
-            </div>
-
-            {/* Do List */}
+            {/* Text Examples - Paste examples directly */}
             <div>
               <label className="block text-xs font-medium text-[#737373] mb-1">
-                Must Include (Do List)
+                Text Examples (paste ad copy examples)
               </label>
-              <div className="space-y-2">
-                {formData.do_list.map((item, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-2 p-2 bg-green-50 rounded"
-                  >
-                    <span className="flex-1 text-sm text-green-800">{item}</span>
-                    <button
-                      onClick={() => handleRemoveDoItem(index)}
-                      className="p-1 hover:bg-green-100 rounded"
-                    >
-                      <X className="w-3 h-3 text-green-600" />
-                    </button>
-                  </div>
-                ))}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newDoItem}
-                    onChange={(e) => setNewDoItem(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddDoItem()}
-                    className="flex-1 h-8 px-3 text-sm border border-[#E5E5E5] rounded focus:outline-none focus:border-black"
-                    placeholder="Add do item..."
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleAddDoItem}
-                    disabled={!newDoItem.trim()}
-                  >
-                    <Plus className="w-3 h-3" />
-                  </Button>
-                </div>
-              </div>
-            </div>
+              <textarea
+                value={formData.text_examples}
+                onChange={(e) =>
+                  setFormData({ ...formData, text_examples: e.target.value })
+                }
+                className="w-full h-48 px-3 py-2 text-sm border border-[#E5E5E5] rounded focus:outline-none focus:border-black resize-none"
+                placeholder="Paste full ad copy examples here that follow this format...
 
-            {/* Don't List */}
-            <div>
-              <label className="block text-xs font-medium text-[#737373] mb-1">
-                Must Avoid (Don't List)
-              </label>
-              <div className="space-y-2">
-                {formData.dont_list.map((item, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-2 p-2 bg-red-50 rounded"
-                  >
-                    <span className="flex-1 text-sm text-red-800">{item}</span>
-                    <button
-                      onClick={() => handleRemoveDontItem(index)}
-                      className="p-1 hover:bg-red-100 rounded"
-                    >
-                      <X className="w-3 h-3 text-red-600" />
-                    </button>
-                  </div>
-                ))}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newDontItem}
-                    onChange={(e) => setNewDontItem(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddDontItem()}
-                    className="flex-1 h-8 px-3 text-sm border border-[#E5E5E5] rounded focus:outline-none focus:border-black"
-                    placeholder="Add don't item..."
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleAddDontItem}
-                    disabled={!newDontItem.trim()}
-                  >
-                    <Plus className="w-3 h-3" />
-                  </Button>
-                </div>
-              </div>
+---
+
+Another example ad...
+
+---
+
+Third example..."
+              />
+              <p className="text-xs text-[#A3A3A3] mt-1">
+                Paste real ad examples. Separate multiple examples with ---
+              </p>
             </div>
 
             {/* Reference Images - only show for existing formats */}
@@ -835,7 +747,7 @@ function FormatEditorModal({
               </Button>
               <Button
                 onClick={() => onSave(formData)}
-                disabled={isLoading || !formData.name || !formData.structure}
+                disabled={isLoading || !formData.name || !formData.prompt}
               >
                 {isLoading ? (
                   <>
