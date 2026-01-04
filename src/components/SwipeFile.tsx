@@ -403,7 +403,7 @@ export function SwipeFile() {
       const res = await authFetch(`${API_BASE}/settings/formats`)
       if (res.ok) {
         const data = await res.json()
-        setFormats(data)
+        setFormats(data.formats || [])
       }
     } catch (error) {
       console.error('Failed to fetch formats:', error)
