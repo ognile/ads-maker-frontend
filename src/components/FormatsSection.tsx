@@ -5,7 +5,6 @@ import {
   ChevronUp,
   Plus,
   Trash2,
-  RotateCcw,
   Loader2,
   X,
   FileText,
@@ -38,7 +37,6 @@ interface AdFormat {
   linked_swipe_ids: string[]
   reference_image_urls: string[]
   is_active: boolean
-  is_default: boolean
 }
 
 interface SwipeFile {
@@ -99,23 +97,6 @@ async function deleteFormat(format_id: string): Promise<void> {
   if (!res.ok) throw new Error('Failed to delete format')
 }
 
-async function resetFormat(format_id: string): Promise<void> {
-  const res = await authFetch(
-    `${API_BASE}/settings/formats/${format_id}/reset`,
-    {
-      method: 'POST',
-    }
-  )
-  if (!res.ok) throw new Error('Failed to reset format')
-}
-
-async function resetAllFormats(): Promise<void> {
-  const res = await authFetch(`${API_BASE}/settings/formats/reset-all`, {
-    method: 'POST',
-  })
-  if (!res.ok) throw new Error('Failed to reset all formats')
-}
-
 async function addReferenceImage(
   format_id: string,
   image_data: string
@@ -149,25 +130,16 @@ function FormatCard({
   format,
   onEdit,
   onDelete,
-  onReset,
 }: {
   format: AdFormat
   onEdit: () => void
   onDelete: () => void
-  onReset: () => void
 }) {
   return (
     <div className="border border-[#E5E5E5] rounded p-4 hover:border-[#A3A3A3] transition-colors">
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h4 className="font-medium text-sm">{format.name}</h4>
-            {format.is_default && (
-              <span className="px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-700 rounded">
-                Default
-              </span>
-            )}
-          </div>
+          <h4 className="font-medium text-sm">{format.name}</h4>
           <p className="text-xs text-[#737373] mt-1 line-clamp-2">
             {format.description}
           </p>
@@ -198,24 +170,13 @@ function FormatCard({
         >
           Edit
         </button>
-        {format.is_default && (
-          <button
-            onClick={onReset}
-            className="px-2 py-1.5 text-xs text-[#737373] hover:bg-[#F5F5F5] rounded transition-colors"
-            title="Reset to default"
-          >
-            <RotateCcw className="w-3 h-3" />
-          </button>
-        )}
-        {!format.is_default && (
-          <button
-            onClick={onDelete}
-            className="px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded transition-colors"
-            title="Delete format"
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
-        )}
+        <button
+          onClick={onDelete}
+          className="px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded transition-colors"
+          title="Delete format"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
       </div>
     </div>
   )
@@ -333,13 +294,11 @@ function SwipeSelectorModal({
 function FormatEditorModal({
   format,
   onSave,
-  onReset,
   onClose,
   isLoading,
 }: {
   format: AdFormat | null
   onSave: (data: Partial<AdFormat>) => void
-  onReset?: () => void
   onClose: () => void
   isLoading: boolean
 }) {
@@ -727,20 +686,7 @@ Third example..."
           </div>
 
           {/* Footer */}
-          <div className="p-4 border-t border-[#E5E5E5] flex items-center justify-between">
-            <div>
-              {!isNew && format?.is_default && onReset && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onReset}
-                  disabled={isLoading}
-                >
-                  <RotateCcw className="w-3 h-3 mr-1" />
-                  Reset to Default
-                </Button>
-              )}
-            </div>
+          <div className="p-4 border-t border-[#E5E5E5] flex items-center justify-end">
             <div className="flex gap-2">
               <Button variant="outline" onClick={onClose} disabled={isLoading}>
                 Cancel
@@ -852,25 +798,6 @@ export function FormatsSection() {
     onError: () => toast.error('Failed to delete format'),
   })
 
-  const resetMutation = useMutation({
-    mutationFn: resetFormat,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['formats'] })
-      toast.success('Format reset to default')
-      setEditingFormat(null)
-    },
-    onError: () => toast.error('Failed to reset format'),
-  })
-
-  const resetAllMutation = useMutation({
-    mutationFn: resetAllFormats,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['formats'] })
-      toast.success('All formats reset to defaults')
-    },
-    onError: () => toast.error('Failed to reset formats'),
-  })
-
   // Seed on first expand if no formats
   useEffect(() => {
     if (isExpanded && formats.length === 0 && !isLoading) {
@@ -919,15 +846,6 @@ export function FormatsSection() {
               <Plus className="w-3 h-3 mr-1" />
               Add Format
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => resetAllMutation.mutate()}
-              disabled={resetAllMutation.isPending}
-            >
-              <RotateCcw className="w-3 h-3 mr-1" />
-              Reset All
-            </Button>
           </div>
 
           {/* Format Grid */}
@@ -954,7 +872,6 @@ export function FormatsSection() {
                       deleteMutation.mutate(format.format_id)
                     }
                   }}
-                  onReset={() => resetMutation.mutate(format.format_id)}
                 />
               ))}
             </div>
@@ -972,9 +889,8 @@ export function FormatsSection() {
               data,
             })
           }
-          onReset={() => resetMutation.mutate(editingFormat.format_id)}
           onClose={() => setEditingFormat(null)}
-          isLoading={updateMutation.isPending || resetMutation.isPending}
+          isLoading={updateMutation.isPending}
         />
       )}
 
