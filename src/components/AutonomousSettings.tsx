@@ -29,6 +29,7 @@ interface AutonomousSetting {
   max?: number
   step?: number
   options?: string[]
+  deprecated?: boolean
 }
 
 interface FunnelStatus {
@@ -333,7 +334,7 @@ export function AutonomousSettings() {
       {categories.map((category) => {
         const categorySettings = settings
           ? Object.entries(settings).filter(
-              ([_, s]) => s.category === category.id
+              ([_, s]) => s.category === category.id && !s.deprecated
             )
           : []
 
